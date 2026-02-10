@@ -1,14 +1,17 @@
 require("dotenv").config();
+const express = require("express");
+const cors = require("cors");
+const connectDB = require("./config/db");
 
-const app = require("./app");
-const connectDB= require("./config/db");
+const app = express();
 
-// Attempt to connect to MongoDB (non-blocking)
+app.use(cors());
+app.use(express.json());
+
 connectDB();
 
-const PORT = process.env.PORT || 5000;
+app.use("/api/auth", require("./routes/authRoutes"));
 
-app.listen(PORT, () => {
-  console.log(`🚀 Server running on port ${PORT}`);
+app.listen(5000, () => {
+  console.log("🚀 Server running on port 5000");
 });
- 

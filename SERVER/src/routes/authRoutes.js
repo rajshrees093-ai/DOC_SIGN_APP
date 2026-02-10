@@ -22,6 +22,9 @@ router.post("/register", async (req, res) => {
     if (!name || !email || !password) {
       return res.status(400).json({ message: "All fields required" });
     }
+    router.post("/login", (req, res) => {
+  res.json({ message: "Login route works" });
+});
 
     // 🚨 TEMP: skip DB when Mongo is unavailable
     if (!mongoose.connection.readyState) {
