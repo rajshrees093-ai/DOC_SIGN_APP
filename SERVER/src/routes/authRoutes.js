@@ -85,6 +85,20 @@ router.post("/login", async (req, res) => {
       return res.status(400).json({ message: "Invalid credentials" });
     }
 
+    const authMiddleware = require("../middleware/authMiddleware");
+
+  router.get("/profile", authMiddleware, async (req, res) => {
+       try {
+    res.json({
+      message: "Profile data fetched successfully ✅",
+      user: req.user
+    });
+  } catch (error) {
+    res.status(500).json({ message: "Server error" });
+  }
+});
+
+
     // 5️⃣ Generate JWT token
     const token = jwt.sign(
       { userId: user._id },

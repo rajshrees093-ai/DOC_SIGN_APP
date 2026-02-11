@@ -7,21 +7,40 @@ function Login({ onLogin }) {
   async function handleLogin(e) {
   e.preventDefault();
 
-  try {
-    const res = await fetch("http://localhost:5000/api/auth/login", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email, password }),
-    });
+  try {fetch("http://localhost:5000/api/auth/login", {
+    method: "POST",
+    headers: {
+        "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+        email,
+        password,
+    }),
+})
+
 
     const data = await res.json();
 
-    alert(data.message);
+    console.log("SERVER RESPONSE:", data);   // ⭐ IMPORTANT
+
+    if (!res.ok) {
+      alert(data.message);
+      return;
+    }
+
+    // ⭐ SAVE TOKEN
+    localStorage.setItem("token", data.token);
+
+    console.log("TOKEN SAVED:", data.token); // ⭐ IMPORTANT
+
+    alert(data.message); // uses backend message
+
   } catch (err) {
+    console.error("LOGIN ERROR:", err);
     alert("Server not reachable");
-    console.error(err);
   }
 }
+
 
 
   return (

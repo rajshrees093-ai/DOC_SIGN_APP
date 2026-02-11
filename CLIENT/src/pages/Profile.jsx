@@ -1,18 +1,44 @@
-import React from "react";
+import { useEffect, useState } from "react";
 
 function Profile({ onLogout }) {
+  const [profileData, setProfileData] = useState(null);
   const token = localStorage.getItem("token");
+
+  useEffect(() => {
+    if (!token) return;
+
+    fetch("http://localhost:5000/api/auth/profile", {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    })
+      .then(res => res.json())
+      .then(data => {
+        setProfileData(data);
+      })
+      .catch(() => {
+        alert("Server not reachable");
+      });
+  }, [token]);
+
+  if (!token) {
+    return (
+      <div>
+        <h2>Profile</h2>
+        <p style={{ color: "red" }}>No token found</p>
+        <button onClick={onLogout}>Logout</button>
+      </div>
+    );
+  }
 
   return (
     <div>
       <h2>Profile</h2>
-
-      {token ? (
-        <p style={{ color: "green" }}>Logged in ✅</p>
+      {profileData ? (
+        <pre>{JSON.stringify(profileData, null, 2)}</pre>
       ) : (
-        <p style={{ color: "red" }}>No token found</p>
+        <p>Loading profile...</p>
       )}
-
       <button onClick={onLogout}>Logout</button>
     </div>
   );
