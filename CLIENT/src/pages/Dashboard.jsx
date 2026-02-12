@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import axios from "axios";
+import { Link } from "react-router-dom";   // ⭐ IMPORTANT ADDITION
 
 function Dashboard() {
   const [docs, setDocs] = useState([]);
@@ -106,15 +107,12 @@ function Dashboard() {
     <div style={{ padding: "20px" }}>
       <h2>📄 Document Dashboard</h2>
 
-      {/* ✅ Welcome User */}
       {user && <h3>Welcome, {user.name} 👋</h3>}
 
-      {/* ✅ Logout */}
       <button onClick={handleLogout}>Logout</button>
 
       <hr />
 
-      {/* ✅ Upload Section */}
       <input
         type="file"
         onChange={(e) => setFile(e.target.files[0])}
@@ -126,13 +124,16 @@ function Dashboard() {
 
       <hr />
 
-      {/* ✅ Documents List */}
       {docs.length === 0 ? (
         <p>No documents found</p>
       ) : (
         docs.map((doc) => (
           <div key={doc.id} style={{ marginBottom: "10px" }}>
-            <strong>{doc.filename}</strong>
+
+            {/* ⭐⭐⭐ THIS IS THE ONLY REAL CHANGE */}
+            <Link to={`/preview/${doc.path}`}>
+              {doc.filename}
+            </Link>
 
             <button
               onClick={() => handleDelete(doc.id)}
@@ -140,6 +141,7 @@ function Dashboard() {
             >
               Delete
             </button>
+
           </div>
         ))
       )}
