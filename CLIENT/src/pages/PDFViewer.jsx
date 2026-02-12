@@ -8,13 +8,11 @@ function PDFViewer() {
 
   const sigRef = useRef(null);
 
-  const [position, setPosition] = useState(null);
-
-  // ⭐ TOTAL PAGES FROM BACKEND
   const [totalPages, setTotalPages] = useState(null);
-
-  // ⭐ USER SELECTED PAGE (THIS WAS MISSING)
   const [selectedPage, setSelectedPage] = useState(1);
+
+  // ⭐ STORE MULTIPLE SIGNATURES
+  const [signatures, setSignatures] = useState([]);
 
   // =========================
   // ✅ FETCH PAGE COUNT
@@ -30,69 +28,76 @@ function PDFViewer() {
         setTotalPages(res.data.pages);
       })
       .catch((err) => {
-        console.error("Page count error:", err);
+        console.error(err);
       });
   }, [filename]);
 
   // =========================
-  // ✅ CAPTURE CLICK POSITION
+  // ✅ CLICK PDF → ADD SIGNATURE POSITION
   // =========================
-  const handlePdfClick = (e) => {
-    const rect = e.currentTarget.getBoundingClientRect();
-
-    const x = e.clientX - rect.left;
-    const y = rect.bottom - e.clientY;
-
-    console.log("PDF CLICK:", { x, y, page: selectedPage });
-
-    setPosition({
-      x,
-      y,
-      page: selectedPage, // ⭐⭐⭐ USE SELECTED PAGE
-    });
-  };
-
-  const clearSignature = () => {
-    if (!sigRef.current) return;
-    sigRef.current.clear();
-  };
-
-  // =========================
-  // ✅ APPLY SIGNATURE
-  // =========================
-  const saveSignature = async () => {
+  const handlePdfClick = () => {
     if (!sigRef.current || sigRef.current.isEmpty()) {
       alert("Draw signature first ✍");
       return;
     }
 
-    if (!position) {
-      alert("Click on PDF to select position 📍");
+    const canvas = sigRef.current.getCanvas();
+    const image = canvas.toDataURL("image/png");
+
+    // Fake center placement for now (stable & predictable)
+    const newSignature = {
+      x: 100,
+      y: 100,
+      page: selectedPage,
+      size: 150,
+      image,
+    };
+
+    console.log("SIGNATURE ADDED:", newSignature);
+
+    setSignatures([...signatures, newSignature]);
+
+    sigRef.current.clear();
+  };
+
+  // =========================
+  // ✅ UNDO LAST SIGNATURE
+  // =========================
+  const undoSignature = () => {
+    if (signatures.length === 0) return;
+
+    const updated = [...signatures];
+    updated.pop();
+
+    setSignatures(updated);
+  };
+
+  // =========================
+  // ✅ FINAL SAVE TO BACKEND
+  // =========================
+  const saveAllSignatures = async () => {
+    if (signatures.length === 0) {
+      alert("No signatures placed ❌");
       return;
     }
 
     try {
-      const image = sigRef.current.getCanvas().toDataURL("image/png");
       const token = localStorage.getItem("token");
 
       const res = await axios.post(
         "http://localhost:5000/api/docs/sign",
         {
           filename,
-          signatures: [
-            {
-              ...position,
-              size: 150,
-              image,
-            },
-          ],
+          signatures,
         },
         {
           headers: { Authorization: `Bearer ${token}` },
         }
       );
 
-      window.open(`http://localhost:5000/uploads/${res.data.file}`);
+      const signedFile = res.data.file;
+
+      window.open(`http://localhost:5000/uploads/${signedFile}`);
 
     } catch (err) {
       console.error(err);
@@ -104,12 +109,10 @@ function PDFViewer() {
     <div style={{ padding: 20 }}>
       <h2>PDF Preview & Sign ✍</h2>
 
-      {/* ✅ SHOW TOTAL PAGES */}
-      {totalPages && (
-        <h3>📄 Total Pages: {totalPages}</h3>
-      )}
+      {/* ✅ PAGE INFO */}
+      {totalPages && <h3>📄 Total Pages: {totalPages}</h3>}
 
-      {/* ✅ PAGE SELECTOR RESTORED ⭐⭐⭐ */}
+      {/* ✅ PAGE SELECTOR */}
       {totalPages && (
         <div style={{ marginBottom: 10 }}>
           <label>Select Page: </label>
@@ -127,13 +130,13 @@ function PDFViewer() {
         </div>
       )}
 
-      {/* ✅ CLICKABLE PDF */}
+      {/* ✅ PDF DISPLAY */}
       <div
-        onClick={handlePdfClick}
         style={{
           border: "2px solid #ccc",
-          display: "inline-block",
-          cursor: "crosshair",
+          width: 820,
+          padding: 10,
+          marginBottom: 20,
         }}
       >
         <iframe
@@ -141,17 +144,10 @@ function PDFViewer() {
           width="800"
           height="500"
           title="PDF"
-          style={{ pointerEvents: "none" }}
         />
       </div>
 
-      {/* ✅ SHOW POSITION */}
-      {position && (
-        <p>
-          📍 Position → X: {Math.round(position.x)} | Y: {Math.round(position.y)} | Page: {position.page}
-        </p>
-      )}
-
+      {/* ✅ SIGNATURE PAD */}
       <h3>Draw Signature:</h3>
 
       <SignatureCanvas
@@ -160,14 +156,38 @@ function PDFViewer() {
         canvasProps={{
           width: 500,
           height: 200,
-          style: { border: "2px solid black" },
+          style: {
+            border: "2px solid black",
+            borderRadius: "8px",
+          },
         }}
       />
 
       <br /><br />
 
-      <button onClick={clearSignature}>Clear Pad</button>
-      <button onClick={saveSignature}>Apply Signature ✅</button>
+      {/* ✅ ACTION BUTTONS */}
+      <button onClick={handlePdfClick}>
+        Add Signature ➕
+      </button>
+
+      <button onClick={undoSignature} style={{ marginLeft: 10 }}>
+        Undo Last ↩
+      </button>
+
+      <button onClick={saveAllSignatures} style={{ marginLeft: 10 }}>
+        Finalize & Sign ✅
+      </button>
+
+      {/* ✅ SIGNATURE LIST */}
+      <hr />
+
+      <h3>Placed Signatures: {signatures.length}</h3>
+
+      {signatures.map((sig, i) => (
+        <div key={i}>
+          ✔ Page {sig.page} | X: {sig.x} | Y: {sig.y}
+        </div>
+      ))}
     </div>
   );
 }
