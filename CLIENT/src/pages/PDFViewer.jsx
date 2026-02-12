@@ -7,12 +7,17 @@ function PDFViewer() {
   const { filename } = useParams();
 
   const sigRef = useRef(null);
+  const pdfRef = useRef(null);
 
   const [totalPages, setTotalPages] = useState(null);
   const [selectedPage, setSelectedPage] = useState(1);
 
-  // ⭐ STORE MULTIPLE SIGNATURES
-  const [signatures, setSignatures] = useState([]);
+  const [signatureImage, setSignatureImage] = useState(null);
+
+  // ⭐ POSITION OF DRAGGABLE SIGNATURE
+  const [sigPosition, setSigPosition] = useState({ x: 100, y: 100 });
+
+  const [dragging, setDragging] = useState(false);
 
   // =========================
   // ✅ FETCH PAGE COUNT
@@ -24,60 +29,50 @@ function PDFViewer() {
       .get(`http://localhost:5000/api/docs/pages/${filename}`, {
         headers: { Authorization: `Bearer ${token}` },
       })
-      .then((res) => {
-        setTotalPages(res.data.pages);
-      })
-      .catch((err) => {
-        console.error(err);
-      });
+      .then((res) => setTotalPages(res.data.pages))
+      .catch(console.error);
   }, [filename]);
 
   // =========================
-  // ✅ CLICK PDF → ADD SIGNATURE POSITION
+  // ✅ GENERATE SIGNATURE IMAGE
   // =========================
-  const handlePdfClick = () => {
+  const generateSignature = () => {
     if (!sigRef.current || sigRef.current.isEmpty()) {
       alert("Draw signature first ✍");
       return;
     }
 
-    const canvas = sigRef.current.getCanvas();
-    const image = canvas.toDataURL("image/png");
+    const image = sigRef.current.getCanvas().toDataURL("image/png");
 
-    // Fake center placement for now (stable & predictable)
-    const newSignature = {
-      x: 100,
-      y: 100,
-      page: selectedPage,
-      size: 150,
-      image,
-    };
-
-    console.log("SIGNATURE ADDED:", newSignature);
-
-    setSignatures([...signatures, newSignature]);
-
+    setSignatureImage(image);
     sigRef.current.clear();
+
+    alert("Drag signature onto PDF ✅");
   };
 
   // =========================
-  // ✅ UNDO LAST SIGNATURE
+  // ✅ DRAG LOGIC
   // =========================
-  const undoSignature = () => {
-    if (signatures.length === 0) return;
+  const startDrag = () => setDragging(true);
+  const stopDrag = () => setDragging(false);
 
-    const updated = [...signatures];
-    updated.pop();
+  const handleMouseMove = (e) => {
+    if (!dragging) return;
 
-    setSignatures(updated);
+    const rect = pdfRef.current.getBoundingClientRect();
+
+    const x = e.clientX - rect.left;
+    const y = rect.bottom - e.clientY;
+
+    setSigPosition({ x, y });
   };
 
   // =========================
-  // ✅ FINAL SAVE TO BACKEND
+  // ✅ FINALIZE SIGNATURE
   // =========================
-  const saveAllSignatures = async () => {
-    if (signatures.length === 0) {
-      alert("No signatures placed ❌");
+  const saveSignature = async () => {
+    if (!signatureImage) {
+      alert("Generate signature first ✍");
       return;
     }
 
@@ -88,16 +83,22 @@ function PDFViewer() {
         "http://localhost:5000/api/docs/sign",
         {
           filename,
-          signatures,
+          signatures: [
+            {
+              x: sigPosition.x,
+              y: sigPosition.y,
+              page: selectedPage,
+              size: 150,
+              image: signatureImage,
+            },
+          ],
         },
         {
           headers: { Authorization: `Bearer ${token}` },
         }
       );
 
-      const signedFile = res.data.file;
-
-      window.open(`http://localhost:5000/uploads/${signedFile}`);
+      window.open(`http://localhost:5000/uploads/${res.data.file}`);
 
     } catch (err) {
       console.error(err);
@@ -109,10 +110,8 @@ function PDFViewer() {
     <div style={{ padding: 20 }}>
       <h2>PDF Preview & Sign ✍</h2>
 
-      {/* ✅ PAGE INFO */}
       {totalPages && <h3>📄 Total Pages: {totalPages}</h3>}
 
-      {/* ✅ PAGE SELECTOR */}
       {totalPages && (
         <div style={{ marginBottom: 10 }}>
           <label>Select Page: </label>
@@ -130,13 +129,18 @@ function PDFViewer() {
         </div>
       )}
 
-      {/* ✅ PDF DISPLAY */}
+      {/* ================= PDF AREA ================= */}
       <div
+        ref={pdfRef}
+        onMouseMove={handleMouseMove}
+        onMouseUp={stopDrag}
         style={{
+          position: "relative",
+          width: 800,
+          height: 500,
           border: "2px solid #ccc",
-          width: 820,
-          padding: 10,
           marginBottom: 20,
+          userSelect: "none",
         }}
       >
         <iframe
@@ -144,10 +148,29 @@ function PDFViewer() {
           width="800"
           height="500"
           title="PDF"
+          style={{ position: "absolute", top: 0, left: 0 }}
         />
+
+        {/* ⭐ DRAGGABLE SIGNATURE PREVIEW */}
+        {signatureImage && (
+          <img
+            src={signatureImage}
+            alt="signature"
+            onMouseDown={startDrag}
+            style={{
+              position: "absolute",
+              left: sigPosition.x,
+              top: 500 - sigPosition.y,
+              width: 150,
+              cursor: "move",
+              border: "1px dashed red",
+              background: "white",
+            }}
+          />
+        )}
       </div>
 
-      {/* ✅ SIGNATURE PAD */}
+      {/* ================= SIGNATURE PAD ================= */}
       <h3>Draw Signature:</h3>
 
       <SignatureCanvas
@@ -165,29 +188,13 @@ function PDFViewer() {
 
       <br /><br />
 
-      {/* ✅ ACTION BUTTONS */}
-      <button onClick={handlePdfClick}>
-        Add Signature ➕
+      <button onClick={generateSignature}>
+        Generate Signature 🖊
       </button>
 
-      <button onClick={undoSignature} style={{ marginLeft: 10 }}>
-        Undo Last ↩
+      <button onClick={saveSignature} style={{ marginLeft: 10 }}>
+        Apply to PDF ✅
       </button>
-
-      <button onClick={saveAllSignatures} style={{ marginLeft: 10 }}>
-        Finalize & Sign ✅
-      </button>
-
-      {/* ✅ SIGNATURE LIST */}
-      <hr />
-
-      <h3>Placed Signatures: {signatures.length}</h3>
-
-      {signatures.map((sig, i) => (
-        <div key={i}>
-          ✔ Page {sig.page} | X: {sig.x} | Y: {sig.y}
-        </div>
-      ))}
     </div>
   );
 }
