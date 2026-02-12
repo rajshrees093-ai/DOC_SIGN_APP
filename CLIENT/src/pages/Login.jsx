@@ -21,7 +21,7 @@ function Login({ onLoginSuccess }) {
 
       const data = await res.json();
 
-      console.log("SERVER RESPONSE:", data); // ⭐ for debugging
+      console.log("SERVER RESPONSE:", data);
 
       if (!res.ok) {
         alert(data.message || "Login failed");
@@ -31,12 +31,12 @@ function Login({ onLoginSuccess }) {
       // ✅ Save JWT token
       localStorage.setItem("token", data.token);
 
-      console.log("TOKEN SAVED:", data.token); // ⭐ confirm storage
+      console.log("TOKEN SAVED:", data.token);
 
       alert("Login successful ✅");
 
-      // ✅ Tell App.jsx user is logged in
-      onLoginSuccess();
+      // ✅ Redirect to dashboard (IMPORTANT FOR DAY 4)
+      window.location.href = "/dashboard";
 
     } catch (err) {
       console.error("LOGIN ERROR:", err);
