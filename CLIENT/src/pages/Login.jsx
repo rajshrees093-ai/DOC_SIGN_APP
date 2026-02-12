@@ -1,47 +1,48 @@
 import { useState } from "react";
 
-function Login({ onLogin }) {
+function Login({ onLoginSuccess }) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
 
   async function handleLogin(e) {
-  e.preventDefault();
+    e.preventDefault();
 
-  try {fetch("http://localhost:5000/api/auth/login", {
-    method: "POST",
-    headers: {
-        "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-        email,
-        password,
-    }),
-})
+    try {
+      const res = await fetch("http://localhost:5000/api/auth/login", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          email,
+          password,
+        }),
+      });
 
+      const data = await res.json();
 
-    const data = await res.json();
+      console.log("SERVER RESPONSE:", data); // ⭐ for debugging
 
-    console.log("SERVER RESPONSE:", data);   // ⭐ IMPORTANT
+      if (!res.ok) {
+        alert(data.message || "Login failed");
+        return;
+      }
 
-    if (!res.ok) {
-      alert(data.message);
-      return;
+      // ✅ Save JWT token
+      localStorage.setItem("token", data.token);
+
+      console.log("TOKEN SAVED:", data.token); // ⭐ confirm storage
+
+      alert("Login successful ✅");
+
+      // ✅ Tell App.jsx user is logged in
+      onLoginSuccess();
+
+    } catch (err) {
+      console.error("LOGIN ERROR:", err);
+      alert("Server not reachable ❌ (Check backend)");
     }
-
-    // ⭐ SAVE TOKEN
-    localStorage.setItem("token", data.token);
-
-    console.log("TOKEN SAVED:", data.token); // ⭐ IMPORTANT
-
-    alert(data.message); // uses backend message
-
-  } catch (err) {
-    console.error("LOGIN ERROR:", err);
-    alert("Server not reachable");
   }
-}
-
-
 
   return (
     <div>
@@ -50,21 +51,21 @@ function Login({ onLogin }) {
       <form onSubmit={handleLogin}>
         <input
           type="email"
-          placeholder="Email"
+          placeholder="Enter email"
           value={email}
           onChange={(e) => setEmail(e.target.value)}
-          required
         />
-        <br />
+
+        <br /><br />
 
         <input
           type="password"
-          placeholder="Password"
+          placeholder="Enter password"
           value={password}
           onChange={(e) => setPassword(e.target.value)}
-          required
         />
-        <br />
+
+        <br /><br />
 
         <button type="submit">Login</button>
       </form>
