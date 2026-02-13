@@ -14,12 +14,20 @@ function PDFViewer() {
 
   const [signatures, setSignatures] = useState([]);
 
-  // ⭐ Dragging
-  const [dragIndex, setDragIndex] = useState(null);
-  const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
+  // ⭐ SIGNATURE SPACES
+  const [blocks, setBlocks] = useState([
+    { x: 200, y: 150, width: 200, height: 100 },
+  ]);
 
-  // ⭐ Resizing
-  const [resizeIndex, setResizeIndex] = useState(null);
+  const [activeBlock, setActiveBlock] = useState(0);
+
+  const [dragBlock, setDragBlock] = useState(null);
+  const [resizeBlock, setResizeBlock] = useState(null);
+
+  const [dragSigIndex, setDragSigIndex] = useState(null);
+  const [sigOffset, setSigOffset] = useState({ x: 0, y: 0 });
+
+  const [resizeSigIndex, setResizeSigIndex] = useState(null);
 
   // ================= PAGE COUNT =================
   useEffect(() => {
@@ -33,77 +41,117 @@ function PDFViewer() {
       .catch(console.error);
   }, [filename]);
 
-  // ================= ADD SIGNATURE =================
-  const addSignature = () => {
-    if (!sigPadRef.current || sigPadRef.current.isEmpty()) {
-      alert("Draw signature first ✍");
+  // ================= BLOCK CONTROLS =================
+  const addBlock = () => {
+    setBlocks([
+      ...blocks,
+      { x: 100, y: 100, width: 200, height: 100 },
+    ]);
+  };
+
+  const deleteBlock = () => {
+    if (blocks.length === 1) {
+      alert("At least one space required ❌");
       return;
     }
 
-    const image = sigPadRef.current.getCanvas().toDataURL("image/png");
+    const updated = [...blocks];
+    updated.splice(activeBlock, 1);
 
-    setSignatures([
-      ...signatures,
-      {
-        x: 100,
-        y: 100,
-        page: selectedPage,
-        size: 150,
-        image,
-      },
-    ]);
-
-    sigPadRef.current.clear();
+    setBlocks(updated);
+    setActiveBlock(0);
   };
 
-  // ================= START DRAG =================
-  const startDrag = (e, index) => {
-    if (resizeIndex !== null) return;
+  // ================= SIGNATURE DELETE =================
+  const deleteSignature = (index) => {
+    const updated = [...signatures];
+    updated.splice(index, 1);
+    setSignatures(updated);
+  };
+
+  // ================= BLOCK DRAG =================
+  const startBlockDrag = (index) => {
+    setActiveBlock(index);
+    setDragBlock(index);
+  };
+
+  const startBlockResize = (e, index) => {
+    e.stopPropagation();
+    setActiveBlock(index);
+    setResizeBlock(index);
+  };
+
+  // ================= SIGNATURE DRAG =================
+  const startSignatureDrag = (e, index) => {
+    e.stopPropagation();
 
     const rect = e.target.getBoundingClientRect();
 
-    setDragIndex(index);
-    setDragOffset({
+    setDragSigIndex(index);
+    setResizeSigIndex(null);
+
+    setSigOffset({
       x: e.clientX - rect.left,
       y: e.clientY - rect.top,
     });
   };
 
-  // ================= START RESIZE =================
-  const startResize = (index) => {
-    setResizeIndex(index);
+  const startSignatureResize = (e, index) => {
+    e.stopPropagation();
+    setResizeSigIndex(index);
+    setDragSigIndex(null);
   };
 
   // ================= MOUSE MOVE ENGINE =================
   const handleMouseMove = (e) => {
     const rect = containerRef.current.getBoundingClientRect();
 
-    // ✅ DRAGGING
-    if (dragIndex !== null) {
-      let x = e.clientX - rect.left - dragOffset.x;
-      let y = e.clientY - rect.top - dragOffset.y;
+    if (dragBlock !== null) {
+      const updated = [...blocks];
+      const block = updated[dragBlock];
 
+      updated[dragBlock] = {
+        ...block,
+        x: e.clientX - rect.left - block.width / 2,
+        y: e.clientY - rect.top - block.height / 2,
+      };
+
+      setBlocks(updated);
+    }
+
+    if (resizeBlock !== null) {
+      const updated = [...blocks];
+      const block = updated[resizeBlock];
+
+      updated[resizeBlock] = {
+        ...block,
+        width: Math.max(100, e.clientX - rect.left - block.x),
+        height: Math.max(50, e.clientY - rect.top - block.y),
+      };
+
+      setBlocks(updated);
+    }
+
+    if (dragSigIndex !== null) {
       const updated = [...signatures];
-      const sig = updated[dragIndex];
+      const sig = updated[dragSigIndex];
 
-      const maxX = rect.width - sig.size;
-      const maxY = rect.height - sig.size / 2;
+      updated[dragSigIndex] = {
+        ...sig,
+        x: e.clientX - rect.left - sigOffset.x,
+        y: e.clientY - rect.top - sigOffset.y,
+      };
 
-      x = Math.max(0, Math.min(x, maxX));
-      y = Math.max(0, Math.min(y, maxY));
-
-      updated[dragIndex] = { ...sig, x, y };
       setSignatures(updated);
     }
 
-    // ✅ RESIZING
-    if (resizeIndex !== null) {
+    if (resizeSigIndex !== null) {
       const updated = [...signatures];
-      const sig = updated[resizeIndex];
+      const sig = updated[resizeSigIndex];
 
       const newSize = Math.max(50, e.clientX - rect.left - sig.x);
 
-      updated[resizeIndex] = {
+      updated[resizeSigIndex] = {
         ...sig,
         size: newSize,
       };
@@ -113,24 +161,44 @@ function PDFViewer() {
   };
 
   const stopActions = () => {
-    setDragIndex(null);
-    setResizeIndex(null);
+    setDragBlock(null);
+    setResizeBlock(null);
+    setDragSigIndex(null);
+    setResizeSigIndex(null);
   };
 
-  // ================= FINALIZE PDF =================
+  // ================= PLACE SIGNATURE =================
+  const placeSignature = () => {
+    if (!sigPadRef.current || sigPadRef.current.isEmpty()) {
+      alert("Draw signature first ✍");
+      return;
+    }
+
+    const block = blocks[activeBlock];
+    const image = sigPadRef.current.getCanvas().toDataURL("image/png");
+
+    setSignatures([
+      ...signatures,
+      {
+        x: block.x + 10,
+        y: block.y + 10,
+        size: block.width - 20,
+        page: selectedPage,
+        image,
+      },
+    ]);
+
+    sigPadRef.current.clear();
+  };
+
   const finalizePDF = async () => {
     try {
       const token = localStorage.getItem("token");
 
       const res = await axios.post(
         "http://localhost:5000/api/docs/sign",
-        {
-          filename,
-          signatures,
-        },
-        {
-          headers: { Authorization: `Bearer ${token}` },
-        }
+        { filename, signatures },
+        { headers: { Authorization: `Bearer ${token}` } }
       );
 
       window.open(`http://localhost:5000/uploads/${res.data.file}`);
@@ -147,23 +215,19 @@ function PDFViewer() {
 
       {totalPages && <h3>📄 Total Pages: {totalPages}</h3>}
 
-      {/* PAGE SELECTOR */}
-      {totalPages && (
-        <select
-          value={selectedPage}
-          onChange={(e) => setSelectedPage(Number(e.target.value))}
-        >
-          {Array.from({ length: totalPages }, (_, i) => (
-            <option key={i + 1} value={i + 1}>
-              Page {i + 1}
-            </option>
-          ))}
-        </select>
-      )}
+      <button onClick={addBlock}>➕ Add Signature Space</button>
+      <button onClick={deleteBlock} style={{ marginLeft: 10 }}>
+        ❌ Delete Space
+      </button>
+      <button onClick={placeSignature} style={{ marginLeft: 10 }}>
+        ✅ Place Signature
+      </button>
+      <button onClick={finalizePDF} style={{ marginLeft: 10 }}>
+        🚀 Finalize PDF
+      </button>
 
       <br /><br />
 
-      {/* PDF CONTAINER */}
       <div
         ref={containerRef}
         onMouseMove={handleMouseMove}
@@ -173,7 +237,6 @@ function PDFViewer() {
           width: 800,
           height: 500,
           border: "2px solid #ccc",
-          marginBottom: 20,
           background: "white",
         }}
       >
@@ -190,6 +253,61 @@ function PDFViewer() {
           }}
         />
 
+        {/* SIGNATURE SPACES WITH ORDER BADGE ⭐⭐⭐ */}
+        {blocks.map((block, index) => (
+          <div
+            key={index}
+            onMouseDown={() => startBlockDrag(index)}
+            style={{
+              position: "absolute",
+              left: block.x,
+              top: block.y,
+              width: block.width,
+              height: block.height,
+              border:
+                activeBlock === index
+                  ? "2px solid green"
+                  : "2px dashed gray",
+              background: "rgba(0,255,0,0.05)",
+              cursor: "move",
+            }}
+          >
+            {/* ORDER BADGE ⭐⭐⭐ */}
+            <div
+              style={{
+                position: "absolute",
+                top: -10,
+                left: -10,
+                background: "green",
+                color: "white",
+                width: 24,
+                height: 24,
+                borderRadius: "50%",
+                fontSize: 12,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                fontWeight: "bold",
+              }}
+            >
+              {index + 1}
+            </div>
+
+            <div
+              onMouseDown={(e) => startBlockResize(e, index)}
+              style={{
+                width: 12,
+                height: 12,
+                background: "green",
+                position: "absolute",
+                right: -6,
+                bottom: -6,
+                cursor: "nwse-resize",
+              }}
+            />
+          </div>
+        ))}
+
         {/* SIGNATURES */}
         {signatures.map((sig, index) =>
           sig.page === selectedPage ? (
@@ -204,17 +322,16 @@ function PDFViewer() {
               <img
                 src={sig.image}
                 alt="sig"
-                onMouseDown={(e) => startDrag(e, index)}
+                onMouseDown={(e) => startSignatureDrag(e, index)}
+                onDoubleClick={() => deleteSignature(index)}
                 style={{
                   width: sig.size,
-                  cursor: "grab",
                   border: "1px dashed red",
                 }}
               />
 
-              {/* RESIZE HANDLE ⭐⭐⭐ */}
               <div
-                onMouseDown={() => startResize(index)}
+                onMouseDown={(e) => startSignatureResize(e, index)}
                 style={{
                   width: 12,
                   height: 12,
@@ -230,18 +347,13 @@ function PDFViewer() {
         )}
       </div>
 
+      <br /><br />
+
       <SignatureCanvas
         ref={sigPadRef}
         penColor="black"
         canvasProps={{ width: 500, height: 200 }}
       />
-
-      <br /><br />
-
-      <button onClick={addSignature}>Add Signature ➕</button>
-      <button onClick={finalizePDF} style={{ marginLeft: 10 }}>
-        Finalize PDF ✅
-      </button>
     </div>
   );
 }
