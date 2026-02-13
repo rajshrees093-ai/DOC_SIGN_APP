@@ -9,7 +9,7 @@ function PDFViewer() {
   const sigPadRef = useRef(null);
   const containerRef = useRef(null);
 
-  // ✅ Page awareness
+  // ✅ PDF awareness
   const [totalPages, setTotalPages] = useState(null);
   const [selectedPage, setSelectedPage] = useState(1);
 
@@ -30,7 +30,6 @@ function PDFViewer() {
         headers: { Authorization: `Bearer ${token}` },
       })
       .then((res) => {
-        console.log("TOTAL PAGES:", res.data.pages);
         setTotalPages(res.data.pages);
       })
       .catch(console.error);
@@ -71,14 +70,23 @@ function PDFViewer() {
 
   const stopDrag = () => setDragIndex(null);
 
-  // ================= SMOOTH DRAGGING =================
+  // ================= SMOOTH + CONSTRAINED DRAG ⭐⭐⭐ =================
   const handleMouseMove = (e) => {
     if (dragIndex === null) return;
 
     const rect = containerRef.current.getBoundingClientRect();
 
-    const x = e.clientX - rect.left - dragOffset.x;
-    const y = e.clientY - rect.top - dragOffset.y;
+    let x = e.clientX - rect.left - dragOffset.x;
+    let y = e.clientY - rect.top - dragOffset.y;
+
+    const sig = signatures[dragIndex];
+
+    const maxX = rect.width - sig.size;
+    const maxY = rect.height - sig.size / 2;
+
+    // ✅ Clamp inside PDF bounds
+    x = Math.max(0, Math.min(x, maxX));
+    y = Math.max(0, Math.min(y, maxY));
 
     const updated = [...signatures];
 
@@ -98,7 +106,7 @@ function PDFViewer() {
     setSignatures(updated);
   };
 
-  // ================= SAVE PDF =================
+  // ================= FINALIZE PDF =================
   const saveAllSignatures = async () => {
     if (signatures.length === 0) {
       alert("No signatures added ❌");
@@ -114,7 +122,7 @@ function PDFViewer() {
           filename,
           signatures: signatures.map((sig) => ({
             ...sig,
-            y: 500 - sig.y, // ⭐ Convert to PDF-lib coordinates
+            y: 500 - sig.y, // ⭐ Convert to PDF-lib coordinate system
           })),
         },
         {
@@ -182,7 +190,7 @@ function PDFViewer() {
             position: "absolute",
             top: 0,
             left: 0,
-            pointerEvents: "none", // ⭐ Prevent drag interference
+            pointerEvents: "none", // ⭐ Prevent interaction conflicts
           }}
         />
 
@@ -206,7 +214,7 @@ function PDFViewer() {
         ))}
       </div>
 
-      {/* ================= SIZE CONTROL ================= */}
+      {/* ✅ SIZE CONTROL */}
       <h3>Resize New Signatures:</h3>
 
       <input
@@ -219,7 +227,7 @@ function PDFViewer() {
 
       <p>Size: {sigSize}px</p>
 
-      {/* ================= SIGNATURE PAD ================= */}
+      {/* ✅ SIGNATURE PAD */}
       <h3>Draw Signature:</h3>
 
       <SignatureCanvas
@@ -239,7 +247,7 @@ function PDFViewer() {
         Finalize PDF ✅
       </button>
 
-      {/* ================= SIGNATURE MANAGER ================= */}
+      {/* ✅ SIGNATURE MANAGER */}
       <hr />
       <h3>Signature Manager</h3>
 
