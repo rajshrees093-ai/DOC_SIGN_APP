@@ -12,12 +12,14 @@ function PDFViewer() {
   const [totalPages, setTotalPages] = useState(null);
   const [selectedPage, setSelectedPage] = useState(1);
 
-  const [sigSize, setSigSize] = useState(150);
   const [signatures, setSignatures] = useState([]);
 
-  // ⭐ Drag states
+  // ⭐ Dragging
   const [dragIndex, setDragIndex] = useState(null);
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
+
+  // ⭐ Resizing
+  const [resizeIndex, setResizeIndex] = useState(null);
 
   // ================= PAGE COUNT =================
   useEffect(() => {
@@ -46,7 +48,7 @@ function PDFViewer() {
         x: 100,
         y: 100,
         page: selectedPage,
-        size: sigSize,
+        size: 150,
         image,
       },
     ]);
@@ -54,59 +56,69 @@ function PDFViewer() {
     sigPadRef.current.clear();
   };
 
-  // ================= DRAG START =================
+  // ================= START DRAG =================
   const startDrag = (e, index) => {
-    e.preventDefault();
+    if (resizeIndex !== null) return;
 
     const rect = e.target.getBoundingClientRect();
 
     setDragIndex(index);
-
     setDragOffset({
       x: e.clientX - rect.left,
       y: e.clientY - rect.top,
     });
   };
 
-  // ================= DRAG MOVE =================
-  const handleMouseMove = (e) => {
-    if (dragIndex === null) return;
-
-    const rect = containerRef.current.getBoundingClientRect();
-
-    let x = e.clientX - rect.left - dragOffset.x;
-    let y = e.clientY - rect.top - dragOffset.y;
-
-    const sig = signatures[dragIndex];
-
-    // ⭐ Constrain inside container
-    const maxX = rect.width - sig.size;
-    const maxY = rect.height - sig.size / 2;
-
-    x = Math.max(0, Math.min(x, maxX));
-    y = Math.max(0, Math.min(y, maxY));
-
-    const updated = [...signatures];
-
-    updated[dragIndex] = {
-      ...updated[dragIndex],
-      x,
-      y,
-    };
-
-    setSignatures(updated);
+  // ================= START RESIZE =================
+  const startResize = (index) => {
+    setResizeIndex(index);
   };
 
-  // ================= DRAG END =================
-  const stopDrag = () => setDragIndex(null);
+  // ================= MOUSE MOVE ENGINE =================
+  const handleMouseMove = (e) => {
+    const rect = containerRef.current.getBoundingClientRect();
+
+    // ✅ DRAGGING
+    if (dragIndex !== null) {
+      let x = e.clientX - rect.left - dragOffset.x;
+      let y = e.clientY - rect.top - dragOffset.y;
+
+      const updated = [...signatures];
+      const sig = updated[dragIndex];
+
+      const maxX = rect.width - sig.size;
+      const maxY = rect.height - sig.size / 2;
+
+      x = Math.max(0, Math.min(x, maxX));
+      y = Math.max(0, Math.min(y, maxY));
+
+      updated[dragIndex] = { ...sig, x, y };
+      setSignatures(updated);
+    }
+
+    // ✅ RESIZING
+    if (resizeIndex !== null) {
+      const updated = [...signatures];
+      const sig = updated[resizeIndex];
+
+      const newSize = Math.max(50, e.clientX - rect.left - sig.x);
+
+      updated[resizeIndex] = {
+        ...sig,
+        size: newSize,
+      };
+
+      setSignatures(updated);
+    }
+  };
+
+  const stopActions = () => {
+    setDragIndex(null);
+    setResizeIndex(null);
+  };
 
   // ================= FINALIZE PDF =================
   const finalizePDF = async () => {
-    if (signatures.length === 0) {
-      alert("No signatures added ❌");
-      return;
-    }
-
     try {
       const token = localStorage.getItem("token");
 
@@ -114,19 +126,14 @@ function PDFViewer() {
         "http://localhost:5000/api/docs/sign",
         {
           filename,
-          signatures: signatures.map((sig) => ({
-            ...sig,
-            y: Number(sig.y), // already top-origin coords
-          })),
+          signatures,
         },
         {
           headers: { Authorization: `Bearer ${token}` },
         }
       );
 
-      const signedFile = res.data.file;
-
-      window.open(`http://localhost:5000/uploads/${signedFile}`);
+      window.open(`http://localhost:5000/uploads/${res.data.file}`);
 
     } catch (err) {
       console.error(err);
@@ -140,41 +147,36 @@ function PDFViewer() {
 
       {totalPages && <h3>📄 Total Pages: {totalPages}</h3>}
 
-      {/* ================= PAGE SELECTOR ================= */}
+      {/* PAGE SELECTOR */}
       {totalPages && (
-        <div>
-          <label>Select Page: </label>
-          <select
-            value={selectedPage}
-            onChange={(e) => setSelectedPage(Number(e.target.value))}
-          >
-            {Array.from({ length: totalPages }, (_, i) => (
-              <option key={i + 1} value={i + 1}>
-                Page {i + 1}
-              </option>
-            ))}
-          </select>
-        </div>
+        <select
+          value={selectedPage}
+          onChange={(e) => setSelectedPage(Number(e.target.value))}
+        >
+          {Array.from({ length: totalPages }, (_, i) => (
+            <option key={i + 1} value={i + 1}>
+              Page {i + 1}
+            </option>
+          ))}
+        </select>
       )}
 
-      <br />
+      <br /><br />
 
-      {/* ================= PDF + SIGNATURE LAYER ================= */}
+      {/* PDF CONTAINER */}
       <div
         ref={containerRef}
         onMouseMove={handleMouseMove}
-        onMouseUp={stopDrag}
+        onMouseUp={stopActions}
         style={{
           position: "relative",
           width: 800,
           height: 500,
           border: "2px solid #ccc",
-          overflow: "hidden",
           marginBottom: 20,
           background: "white",
         }}
       >
-        {/* PDF purely visual */}
         <iframe
           src={`http://localhost:5000/uploads/${filename}#toolbar=0`}
           width="800"
@@ -184,51 +186,54 @@ function PDFViewer() {
             position: "absolute",
             top: 0,
             left: 0,
-            pointerEvents: "none", // ⭐ prevents drag conflicts
+            pointerEvents: "none",
           }}
         />
 
-        {/* Signatures */}
+        {/* SIGNATURES */}
         {signatures.map((sig, index) =>
           sig.page === selectedPage ? (
-            <img
+            <div
               key={index}
-              src={sig.image}
-              alt="signature"
-              onMouseDown={(e) => startDrag(e, index)}
               style={{
                 position: "absolute",
                 left: sig.x,
                 top: sig.y,
-                width: sig.size,
-                cursor: "grab",
-                border: "1px dashed red",
-                background: "white",
               }}
-            />
+            >
+              <img
+                src={sig.image}
+                alt="sig"
+                onMouseDown={(e) => startDrag(e, index)}
+                style={{
+                  width: sig.size,
+                  cursor: "grab",
+                  border: "1px dashed red",
+                }}
+              />
+
+              {/* RESIZE HANDLE ⭐⭐⭐ */}
+              <div
+                onMouseDown={() => startResize(index)}
+                style={{
+                  width: 12,
+                  height: 12,
+                  background: "blue",
+                  position: "absolute",
+                  right: -6,
+                  bottom: -6,
+                  cursor: "nwse-resize",
+                }}
+              />
+            </div>
           ) : null
         )}
       </div>
 
-      {/* ================= CONTROLS ================= */}
-      <input
-        type="range"
-        min="50"
-        max="300"
-        value={sigSize}
-        onChange={(e) => setSigSize(Number(e.target.value))}
-      />
-
-      <p>Signature Size: {sigSize}px</p>
-
       <SignatureCanvas
         ref={sigPadRef}
         penColor="black"
-        canvasProps={{
-          width: 500,
-          height: 200,
-          style: { border: "2px solid black" },
-        }}
+        canvasProps={{ width: 500, height: 200 }}
       />
 
       <br /><br />
