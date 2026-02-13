@@ -6,22 +6,22 @@ import axios from "axios";
 function PDFViewer() {
   const { filename } = useParams();
 
-  const sigRef = useRef(null);
-  const pdfRef = useRef(null);
+  const sigPadRef = useRef(null);
+  const containerRef = useRef(null);
 
+  // ✅ Page awareness
   const [totalPages, setTotalPages] = useState(null);
   const [selectedPage, setSelectedPage] = useState(1);
 
-  const [signatureImage, setSignatureImage] = useState(null);
+  // ✅ Signature system
+  const [sigSize, setSigSize] = useState(150);
+  const [signatures, setSignatures] = useState([]);
 
-  // ⭐ POSITION OF DRAGGABLE SIGNATURE
-  const [sigPosition, setSigPosition] = useState({ x: 100, y: 100 });
+  // ✅ Drag engine
+  const [dragIndex, setDragIndex] = useState(null);
+  const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
 
-  const [dragging, setDragging] = useState(false);
-
-  // =========================
-  // ✅ FETCH PAGE COUNT
-  // =========================
+  // ================= PAGE COUNT =================
   useEffect(() => {
     const token = localStorage.getItem("token");
 
@@ -29,50 +29,79 @@ function PDFViewer() {
       .get(`http://localhost:5000/api/docs/pages/${filename}`, {
         headers: { Authorization: `Bearer ${token}` },
       })
-      .then((res) => setTotalPages(res.data.pages))
+      .then((res) => {
+        console.log("TOTAL PAGES:", res.data.pages);
+        setTotalPages(res.data.pages);
+      })
       .catch(console.error);
   }, [filename]);
 
-  // =========================
-  // ✅ GENERATE SIGNATURE IMAGE
-  // =========================
+  // ================= ADD SIGNATURE =================
   const generateSignature = () => {
-    if (!sigRef.current || sigRef.current.isEmpty()) {
+    if (!sigPadRef.current || sigPadRef.current.isEmpty()) {
       alert("Draw signature first ✍");
       return;
     }
 
-    const image = sigRef.current.getCanvas().toDataURL("image/png");
+    const image = sigPadRef.current.getCanvas().toDataURL("image/png");
 
-    setSignatureImage(image);
-    sigRef.current.clear();
+    setSignatures([
+      ...signatures,
+      {
+        x: 100,
+        y: 100,
+        page: selectedPage,
+        size: sigSize,
+        image,
+      },
+    ]);
 
-    alert("Drag signature onto PDF ✅");
+    sigPadRef.current.clear();
   };
 
-  // =========================
-  // ✅ DRAG LOGIC
-  // =========================
-  const startDrag = () => setDragging(true);
-  const stopDrag = () => setDragging(false);
+  // ================= DRAG START =================
+  const startDrag = (e, index) => {
+    setDragIndex(index);
 
+    setDragOffset({
+      x: e.nativeEvent.offsetX,
+      y: e.nativeEvent.offsetY,
+    });
+  };
+
+  const stopDrag = () => setDragIndex(null);
+
+  // ================= SMOOTH DRAGGING =================
   const handleMouseMove = (e) => {
-    if (!dragging) return;
+    if (dragIndex === null) return;
 
-    const rect = pdfRef.current.getBoundingClientRect();
+    const rect = containerRef.current.getBoundingClientRect();
 
-    const x = e.clientX - rect.left;
-    const y = rect.bottom - e.clientY;
+    const x = e.clientX - rect.left - dragOffset.x;
+    const y = e.clientY - rect.top - dragOffset.y;
 
-    setSigPosition({ x, y });
+    const updated = [...signatures];
+
+    updated[dragIndex] = {
+      ...updated[dragIndex],
+      x,
+      y,
+    };
+
+    setSignatures(updated);
   };
 
-  // =========================
-  // ✅ FINALIZE SIGNATURE
-  // =========================
-  const saveSignature = async () => {
-    if (!signatureImage) {
-      alert("Generate signature first ✍");
+  // ================= REMOVE SIGNATURE =================
+  const deleteSignature = (index) => {
+    const updated = [...signatures];
+    updated.splice(index, 1);
+    setSignatures(updated);
+  };
+
+  // ================= SAVE PDF =================
+  const saveAllSignatures = async () => {
+    if (signatures.length === 0) {
+      alert("No signatures added ❌");
       return;
     }
 
@@ -83,22 +112,19 @@ function PDFViewer() {
         "http://localhost:5000/api/docs/sign",
         {
           filename,
-          signatures: [
-            {
-              x: sigPosition.x,
-              y: sigPosition.y,
-              page: selectedPage,
-              size: 150,
-              image: signatureImage,
-            },
-          ],
+          signatures: signatures.map((sig) => ({
+            ...sig,
+            y: 500 - sig.y, // ⭐ Convert to PDF-lib coordinates
+          })),
         },
         {
           headers: { Authorization: `Bearer ${token}` },
         }
       );
 
-      window.open(`http://localhost:5000/uploads/${res.data.file}`);
+      const signedFile = res.data.file;
+
+      window.open(`http://localhost:5000/uploads/${signedFile}`);
 
     } catch (err) {
       console.error(err);
@@ -110,8 +136,10 @@ function PDFViewer() {
     <div style={{ padding: 20 }}>
       <h2>PDF Preview & Sign ✍</h2>
 
+      {/* ✅ PAGE COUNT */}
       {totalPages && <h3>📄 Total Pages: {totalPages}</h3>}
 
+      {/* ✅ PAGE SELECTOR */}
       {totalPages && (
         <div style={{ marginBottom: 10 }}>
           <label>Select Page: </label>
@@ -129,9 +157,9 @@ function PDFViewer() {
         </div>
       )}
 
-      {/* ================= PDF AREA ================= */}
+      {/* ================= PDF + SIGNATURE LAYER ================= */}
       <div
-        ref={pdfRef}
+        ref={containerRef}
         onMouseMove={handleMouseMove}
         onMouseUp={stopDrag}
         style={{
@@ -140,61 +168,92 @@ function PDFViewer() {
           height: 500,
           border: "2px solid #ccc",
           marginBottom: 20,
-          userSelect: "none",
+          overflow: "hidden",
+          background: "white",
         }}
       >
+        {/* PDF purely visual */}
         <iframe
           src={`http://localhost:5000/uploads/${filename}`}
           width="800"
           height="500"
           title="PDF"
-          style={{ position: "absolute", top: 0, left: 0 }}
+          style={{
+            position: "absolute",
+            top: 0,
+            left: 0,
+            pointerEvents: "none", // ⭐ Prevent drag interference
+          }}
         />
 
-        {/* ⭐ DRAGGABLE SIGNATURE PREVIEW */}
-        {signatureImage && (
+        {/* SIGNATURE OVERLAY */}
+        {signatures.map((sig, index) => (
           <img
-            src={signatureImage}
+            key={index}
+            src={sig.image}
             alt="signature"
-            onMouseDown={startDrag}
+            onMouseDown={(e) => startDrag(e, index)}
             style={{
               position: "absolute",
-              left: sigPosition.x,
-              top: 500 - sigPosition.y,
-              width: 150,
+              left: sig.x,
+              top: sig.y,
+              width: sig.size,
               cursor: "move",
               border: "1px dashed red",
               background: "white",
             }}
           />
-        )}
+        ))}
       </div>
+
+      {/* ================= SIZE CONTROL ================= */}
+      <h3>Resize New Signatures:</h3>
+
+      <input
+        type="range"
+        min="50"
+        max="300"
+        value={sigSize}
+        onChange={(e) => setSigSize(Number(e.target.value))}
+      />
+
+      <p>Size: {sigSize}px</p>
 
       {/* ================= SIGNATURE PAD ================= */}
       <h3>Draw Signature:</h3>
 
       <SignatureCanvas
-        ref={sigRef}
+        ref={sigPadRef}
         penColor="black"
         canvasProps={{
           width: 500,
           height: 200,
-          style: {
-            border: "2px solid black",
-            borderRadius: "8px",
-          },
+          style: { border: "2px solid black" },
         }}
       />
 
       <br /><br />
 
-      <button onClick={generateSignature}>
-        Generate Signature 🖊
+      <button onClick={generateSignature}>Add Signature ➕</button>
+      <button onClick={saveAllSignatures} style={{ marginLeft: 10 }}>
+        Finalize PDF ✅
       </button>
 
-      <button onClick={saveSignature} style={{ marginLeft: 10 }}>
-        Apply to PDF ✅
-      </button>
+      {/* ================= SIGNATURE MANAGER ================= */}
+      <hr />
+      <h3>Signature Manager</h3>
+
+      {signatures.map((sig, index) => (
+        <div key={index}>
+          ✔ Signature {index + 1} (Page {sig.page})
+          <button
+            onClick={() => deleteSignature(index)}
+            style={{ marginLeft: 10 }}
+          >
+            ❌ Remove
+          </button>
+        </div>
+      ))}
     </div>
   );
 }
