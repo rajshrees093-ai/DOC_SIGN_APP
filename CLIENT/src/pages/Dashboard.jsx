@@ -3,9 +3,8 @@ import axios from "axios";
 
 function Dashboard() {
   const [docs, setDocs] = useState([]);
-  const [user, setUser] = useState(null);
-  const [file, setFile] = useState(null);
-  const [reasons, setReasons] = useState({}); // ⭐ store reject reasons
+  const [reason, setReason] = useState("");
+  const [filter, setFilter] = useState("all");
 
   useEffect(() => {
     const token = localStorage.getItem("token");
@@ -15,178 +14,90 @@ function Dashboard() {
       return;
     }
 
-    fetchDocs(token);
-    fetchProfile(token);
+    fetchDocs();
   }, []);
 
-  const fetchDocs = async (token) => {
+  const fetchDocs = async () => {
+    const token = localStorage.getItem("token");
+
     try {
       const res = await axios.get("http://localhost:5000/api/docs", {
         headers: { Authorization: `Bearer ${token}` },
       });
 
       setDocs(res.data);
+
     } catch (err) {
       console.error("Docs fetch error:", err);
     }
   };
 
-  const fetchProfile = async (token) => {
-    try {
-      const res = await axios.get(
-        "http://localhost:5000/api/auth/profile",
-        {
-          headers: { Authorization: `Bearer ${token}` },
-        }
-      );
-
-      setUser(res.data);
-    } catch (err) {
-      console.error("Profile error:", err);
-    }
-  };
-
-  // ================= LOGOUT =================
-  const handleLogout = () => {
-    localStorage.removeItem("token");
-    window.location.href = "/";
-  };
-
-  // ================= UPLOAD =================
-  const handleUpload = async () => {
-    if (!file) {
-      alert("Choose a file first ❌");
-      return;
-    }
-
+  const handleDecision = async (id, decision) => {
     const token = localStorage.getItem("token");
-
-    const formData = new FormData();
-    formData.append("file", file);
 
     try {
       const res = await axios.post(
-        "http://localhost:5000/api/docs/upload",
-        formData,
-        {
-          headers: { Authorization: `Bearer ${token}` },
-        }
+        "http://localhost:5000/api/docs/decision",
+        { id, decision, reason },
+        { headers: { Authorization: `Bearer ${token}` } }
       );
 
       alert(res.data.message);
-      fetchDocs(token);
-      setFile(null);
+      setReason("");
+      fetchDocs();
+
     } catch (err) {
       console.error(err);
-      alert("Upload failed ❌");
+      alert("Decision failed ❌");
     }
   };
 
-  // ================= DELETE =================
-  const handleDelete = async (id) => {
-    const token = localStorage.getItem("token");
-
-    try {
-      await axios.delete(`http://localhost:5000/api/docs/${id}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-
-      setDocs(docs.filter((doc) => doc.id !== id));
-    } catch (err) {
-      console.error(err);
-      alert("Delete failed ❌");
-    }
+  const getStatusColor = (status) => {
+    if (status === "approved") return "green";
+    if (status === "rejected") return "red";
+    return "orange";
   };
 
-  // ================= ACCEPT =================
-  const handleAccept = async (id) => {
-    const token = localStorage.getItem("token");
+  // ✅ FILTER LOGIC
+  const filteredDocs = docs.filter((doc) => {
+    if (filter === "all") return true;
+    return doc.status === filter;
+  });
 
-    try {
-      await axios.post(
-        "http://localhost:5000/api/docs/decision",
-        {
-          id,
-          decision: "accepted",
-        },
-        {
-          headers: { Authorization: `Bearer ${token}` },
-        }
-      );
-
-      setDocs(
-        docs.map((doc) =>
-          doc.id === id ? { ...doc, decision: "accepted" } : doc
-        )
-      );
-    } catch (err) {
-      console.error(err);
-      alert("Accept failed ❌");
-    }
-  };
-
-  // ================= REJECT =================
-  const handleReject = async (id) => {
-    const token = localStorage.getItem("token");
-    const reason = reasons[id];
-
-    if (!reason) {
-      alert("Enter rejection reason ❌");
-      return;
-    }
-
-    try {
-      await axios.post(
-        "http://localhost:5000/api/docs/decision",
-        {
-          id,
-          decision: "rejected",
-          decision_reason: reason,
-        },
-        {
-          headers: { Authorization: `Bearer ${token}` },
-        }
-      );
-
-      setDocs(
-        docs.map((doc) =>
-          doc.id === id
-            ? { ...doc, decision: "rejected", decision_reason: reason }
-            : doc
-        )
-      );
-    } catch (err) {
-      console.error(err);
-      alert("Reject failed ❌");
-    }
-  };
-
-  // ================= UI =================
   return (
     <div style={{ padding: 20 }}>
       <h2>📄 Document Dashboard</h2>
 
-      {user && <h3>Welcome, {user.name} 👋</h3>}
+      {/* ✅ FILTER BUTTONS */}
+      <div style={{ marginBottom: 20 }}>
+        <button onClick={() => setFilter("all")}>All</button>
 
-      <button onClick={handleLogout}>Logout</button>
+        <button
+          onClick={() => setFilter("pending")}
+          style={{ marginLeft: 10 }}
+        >
+          Pending
+        </button>
 
-      <hr />
+        <button
+          onClick={() => setFilter("approved")}
+          style={{ marginLeft: 10 }}
+        >
+          Approved
+        </button>
 
-      <input
-        type="file"
-        onChange={(e) => setFile(e.target.files[0])}
-      />
+        <button
+          onClick={() => setFilter("rejected")}
+          style={{ marginLeft: 10 }}
+        >
+          Rejected
+        </button>
+      </div>
 
-      <br /><br />
-
-      <button onClick={handleUpload}>Upload PDF</button>
-
-      <hr />
-
-      {docs.length === 0 ? (
+      {filteredDocs.length === 0 ? (
         <p>No documents found</p>
       ) : (
-        docs.map((doc) => (
+        filteredDocs.map((doc) => (
           <div
             key={doc.id}
             style={{
@@ -195,57 +106,54 @@ function Dashboard() {
               marginBottom: 10,
             }}
           >
-            <a href={`/preview/${doc.path}`}>
+            {/* ✅ CLICKABLE PDF LINK ⭐⭐⭐ */}
+            <a
+              href={`/preview/${doc.path}`}
+              style={{
+                fontWeight: "bold",
+                fontSize: 16,
+                display: "block",
+                marginBottom: 5,
+              }}
+            >
               {doc.filename}
             </a>
 
-            <p>
-              Status:{" "}
-              <strong>
-                {doc.decision || "pending"}
-              </strong>
+            <p style={{ color: getStatusColor(doc.status) }}>
+              Status: {doc.status}
             </p>
 
-            {/* ACCEPT / REJECT ONLY IF PENDING */}
-            {(doc.decision === "pending" || !doc.decision) && (
-              <>
-                <button onClick={() => handleAccept(doc.id)}>
-                  ✅ Accept
-                </button>
-
-                <input
-                  placeholder="Reject reason"
-                  value={reasons[doc.id] || ""}
-                  onChange={(e) =>
-                    setReasons({
-                      ...reasons,
-                      [doc.id]: e.target.value,
-                    })
-                  }
-                  style={{ marginLeft: 10 }}
-                />
-
-                <button
-                  onClick={() => handleReject(doc.id)}
-                  style={{ marginLeft: 5 }}
-                >
-                  ❌ Reject
-                </button>
-              </>
-            )}
-
-            {doc.decision === "rejected" && (
+            {/* ✅ Rejection Reason */}
+            {doc.status === "rejected" && doc.decision_reason && (
               <p style={{ color: "red" }}>
                 Reason: {doc.decision_reason}
               </p>
             )}
 
-            <button
-              onClick={() => handleDelete(doc.id)}
-              style={{ marginLeft: 10 }}
-            >
-              Delete
-            </button>
+            {/* ✅ Decision Controls */}
+            {doc.status === "pending" && (
+              <>
+                <input
+                  type="text"
+                  placeholder="Rejection reason (optional)"
+                  value={reason}
+                  onChange={(e) => setReason(e.target.value)}
+                />
+
+                <br /><br />
+
+                <button onClick={() => handleDecision(doc.id, "approved")}>
+                  ✅ Approve
+                </button>
+
+                <button
+                  onClick={() => handleDecision(doc.id, "rejected")}
+                  style={{ marginLeft: 10 }}
+                >
+                  ❌ Reject
+                </button>
+              </>
+            )}
           </div>
         ))
       )}

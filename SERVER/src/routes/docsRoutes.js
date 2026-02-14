@@ -52,42 +52,35 @@ router.get("/", authMiddleware, async (req, res) => {
 // =========================
 // ✅ UPLOAD DOCUMENT
 // =========================
-router.post(
-  "/upload",
-  authMiddleware,
-  upload.single("file"),
-  async (req, res) => {
-    try {
-      if (!req.file) {
-        return res.status(400).json({ message: "No file uploaded" });
-      }
-
-      const file = req.file;
-
-      const { error } = await supabase.from("documents").insert([
-        {
-          filename: file.originalname,
-          path: file.filename,
-          owner: req.user.id,
-          status: "pending",        // ⭐ DEFAULT STATUS
-          decision: null,
-          decision_reason: null,
-        },
-      ]);
-
-      if (error) {
-        console.error("SUPABASE ERROR:", error);
-        return res.status(400).json({ error: error.message });
-      }
-
-      res.json({ message: "Upload successful ✅" });
-
-    } catch (err) {
-      console.error("UPLOAD ERROR:", err);
-      res.status(500).json({ error: err.message });
+router.post("/upload", authMiddleware, upload.single("file"), async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ message: "No file uploaded" });
     }
+
+    const file = req.file;
+
+    const { error } = await supabase.from("documents").insert([
+      {
+        filename: file.originalname,
+        path: file.filename,
+        owner: req.user.id,
+        status: "pending", // ⭐ DAY 7 IMPORTANT
+      },
+    ]);
+
+    if (error) {
+      console.error("SUPABASE ERROR:", error);
+      return res.status(400).json({ error: error.message });
+    }
+
+    res.json({ message: "Upload successful ✅" });
+
+  } catch (err) {
+    console.error("UPLOAD ERROR:", err);
+    res.status(500).json({ error: err.message });
   }
-);
+});
 
 
 // =========================
@@ -118,7 +111,7 @@ router.delete("/:id", authMiddleware, async (req, res) => {
 
 
 // =========================
-// ✅ SIGN PDF (MULTI-SIGNATURE + PAGE SUPPORT)
+// ✅ SIGN PDF
 // =========================
 router.post("/sign", authMiddleware, async (req, res) => {
   try {
@@ -180,7 +173,7 @@ router.post("/sign", authMiddleware, async (req, res) => {
 
 
 // =========================
-// ✅ GET PDF PAGE COUNT
+// ✅ PAGE COUNT
 // =========================
 router.get("/pages/:filename", authMiddleware, async (req, res) => {
   try {
@@ -195,9 +188,7 @@ router.get("/pages/:filename", authMiddleware, async (req, res) => {
     const pdfBytes = fs.readFileSync(filePath);
     const pdfDoc = await PDFDocument.load(pdfBytes);
 
-    const totalPages = pdfDoc.getPages().length;
-
-    res.json({ pages: totalPages });
+    res.json({ pages: pdfDoc.getPages().length });
 
   } catch (err) {
     console.error("PAGE COUNT ERROR:", err);
@@ -207,32 +198,26 @@ router.get("/pages/:filename", authMiddleware, async (req, res) => {
 
 
 // =========================
-// ✅ ACCEPT / REJECT DOCUMENT ⭐⭐⭐
+// ✅ DOCUMENT DECISION (DAY 7)
 // =========================
 router.post("/decision", authMiddleware, async (req, res) => {
   try {
-    const { id, decision, decision_reason } = req.body;
+    const { id, decision, reason } = req.body;
 
     if (!id || !decision) {
       return res.status(400).json({ error: "Missing decision data" });
     }
 
-    if (!["accepted", "rejected"].includes(decision)) {
+    if (!["approved", "rejected"].includes(decision)) {
       return res.status(400).json({ error: "Invalid decision value" });
-    }
-
-    const updateData = {
-      decision,
-      status: decision === "accepted" ? "approved" : "rejected",
-    };
-
-    if (decision === "rejected") {
-      updateData.decision_reason = decision_reason || "No reason provided";
     }
 
     const { error } = await supabase
       .from("documents")
-      .update(updateData)
+      .update({
+        status: decision,
+        decision_reason: reason || null,
+      })
       .eq("id", id)
       .eq("owner", req.user.id);
 
@@ -243,13 +228,12 @@ router.post("/decision", authMiddleware, async (req, res) => {
 
     console.log("DOCUMENT DECISION UPDATED ✅");
 
-    res.json({ message: "Decision saved successfully ✅" });
+    res.json({ message: `Document ${decision} ✅` });
 
   } catch (err) {
-    console.error("DECISION SERVER ERROR:", err);
+    console.error("SERVER ERROR:", err);
     res.status(500).json({ error: err.message });
   }
 });
-
 
 module.exports = router;
