@@ -5,6 +5,7 @@ function Dashboard() {
   const [docs, setDocs] = useState([]);
   const [reason, setReason] = useState("");
   const [filter, setFilter] = useState("all");
+  const [file, setFile] = useState(null); // ⭐ Upload state
 
   useEffect(() => {
     const token = localStorage.getItem("token");
@@ -29,6 +30,52 @@ function Dashboard() {
 
     } catch (err) {
       console.error("Docs fetch error:", err);
+    }
+  };
+
+  // ================= UPLOAD PDF ⭐⭐⭐ =================
+  const handleUpload = async () => {
+    if (!file) {
+      alert("Choose PDF first ❌");
+      return;
+    }
+
+    const token = localStorage.getItem("token");
+
+    const formData = new FormData();
+    formData.append("file", file);
+
+    try {
+      const res = await axios.post(
+        "http://localhost:5000/api/docs/upload",
+        formData,
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+
+      alert(res.data.message);
+      setFile(null);
+      fetchDocs();
+
+    } catch (err) {
+      console.error(err);
+      alert("Upload failed ❌");
+    }
+  };
+
+  // ================= DELETE DOCUMENT ⭐⭐⭐ =================
+  const handleDelete = async (id) => {
+    const token = localStorage.getItem("token");
+
+    try {
+      await axios.delete(`http://localhost:5000/api/docs/${id}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+
+      fetchDocs();
+
+    } catch (err) {
+      console.error(err);
+      alert("Delete failed ❌");
     }
   };
 
@@ -58,7 +105,12 @@ function Dashboard() {
     return "orange";
   };
 
-  // ✅ FILTER LOGIC
+  // ================= COUNTERS =================
+  const pendingCount = docs.filter(d => d.status === "pending").length;
+  const approvedCount = docs.filter(d => d.status === "approved").length;
+  const rejectedCount = docs.filter(d => d.status === "rejected").length;
+
+  // ================= FILTER =================
   const filteredDocs = docs.filter((doc) => {
     if (filter === "all") return true;
     return doc.status === filter;
@@ -68,32 +120,47 @@ function Dashboard() {
     <div style={{ padding: 20 }}>
       <h2>📄 Document Dashboard</h2>
 
-      {/* ✅ FILTER BUTTONS */}
+      {/* ================= UPLOAD SECTION ⭐⭐⭐ ================= */}
       <div style={{ marginBottom: 20 }}>
-        <button onClick={() => setFilter("all")}>All</button>
+        <input
+          type="file"
+          onChange={(e) => setFile(e.target.files[0])}
+        />
+
+        <button onClick={handleUpload} style={{ marginLeft: 10 }}>
+          Upload PDF ➕
+        </button>
+      </div>
+
+      {/* ================= FILTER BUTTONS ================= */}
+      <div style={{ marginBottom: 20 }}>
+        <button onClick={() => setFilter("all")}>
+          All ({docs.length})
+        </button>
 
         <button
           onClick={() => setFilter("pending")}
           style={{ marginLeft: 10 }}
         >
-          Pending
+          Pending ({pendingCount})
         </button>
 
         <button
           onClick={() => setFilter("approved")}
           style={{ marginLeft: 10 }}
         >
-          Approved
+          Approved ({approvedCount})
         </button>
 
         <button
           onClick={() => setFilter("rejected")}
           style={{ marginLeft: 10 }}
         >
-          Rejected
+          Rejected ({rejectedCount})
         </button>
       </div>
 
+      {/* ================= DOCUMENT LIST ================= */}
       {filteredDocs.length === 0 ? (
         <p>No documents found</p>
       ) : (
@@ -106,14 +173,12 @@ function Dashboard() {
               marginBottom: 10,
             }}
           >
-            {/* ✅ CLICKABLE PDF LINK ⭐⭐⭐ */}
             <a
               href={`/preview/${doc.path}`}
               style={{
                 fontWeight: "bold",
                 fontSize: 16,
                 display: "block",
-                marginBottom: 5,
               }}
             >
               {doc.filename}
@@ -123,14 +188,13 @@ function Dashboard() {
               Status: {doc.status}
             </p>
 
-            {/* ✅ Rejection Reason */}
             {doc.status === "rejected" && doc.decision_reason && (
               <p style={{ color: "red" }}>
                 Reason: {doc.decision_reason}
               </p>
             )}
 
-            {/* ✅ Decision Controls */}
+            {/* ================= DECISION CONTROLS ================= */}
             {doc.status === "pending" && (
               <>
                 <input
@@ -154,6 +218,14 @@ function Dashboard() {
                 </button>
               </>
             )}
+
+            {/* ================= DELETE BUTTON ⭐⭐⭐ ================= */}
+            <button
+              onClick={() => handleDelete(doc.id)}
+              style={{ marginTop: 10 }}
+            >
+              Delete 🗑
+            </button>
           </div>
         ))
       )}
