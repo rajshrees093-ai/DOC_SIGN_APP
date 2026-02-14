@@ -69,7 +69,9 @@ router.post(
           filename: file.originalname,
           path: file.filename,
           owner: req.user.id,
-          status: "pending", // ⭐⭐⭐ DAY 7
+          status: "pending",        // ⭐ DEFAULT STATUS
+          decision: null,
+          decision_reason: null,
         },
       ]);
 
@@ -86,38 +88,6 @@ router.post(
     }
   }
 );
-
-
-// =========================
-// ✅ UPDATE DOCUMENT STATUS
-// =========================
-router.put("/:id/status", authMiddleware, async (req, res) => {
-  try {
-    const { id } = req.params;
-    const { status } = req.body;
-
-    if (!status) {
-      return res.status(400).json({ error: "Status required" });
-    }
-
-    const { error } = await supabase
-      .from("documents")
-      .update({ status })
-      .eq("id", id)
-      .eq("owner", req.user.id);
-
-    if (error) {
-      console.error("STATUS UPDATE ERROR:", error);
-      return res.status(400).json({ error: error.message });
-    }
-
-    res.json({ message: "Status updated ✅" });
-
-  } catch (err) {
-    console.error("SERVER ERROR:", err);
-    res.status(500).json({ error: err.message });
-  }
-});
 
 
 // =========================
@@ -148,7 +118,7 @@ router.delete("/:id", authMiddleware, async (req, res) => {
 
 
 // =========================
-// ✅ SIGN PDF (MULTI-PAGE SAFE ⭐⭐⭐)
+// ✅ SIGN PDF (MULTI-SIGNATURE + PAGE SUPPORT)
 // =========================
 router.post("/sign", authMiddleware, async (req, res) => {
   try {
@@ -170,20 +140,12 @@ router.post("/sign", authMiddleware, async (req, res) => {
     const pages = pdfDoc.getPages();
 
     for (const sig of signatures) {
-      const {
-        x,
-        y,
-        image,
-        size,
-        page = 1, // ⭐ DEFAULT PAGE SAFETY
-      } = sig;
+      const { x, y, image, size, page } = sig;
 
       const pageIndex = Number(page) - 1;
 
-      if (pageIndex < 0 || pageIndex >= pages.length) {
-        return res.status(400).json({
-          error: `Invalid page number: ${page}`,
-        });
+      if (!pages[pageIndex]) {
+        return res.status(400).json({ error: "Invalid page number" });
       }
 
       const base64Data = image.replace(/^data:image\/png;base64,/, "");
@@ -206,7 +168,7 @@ router.post("/sign", authMiddleware, async (req, res) => {
 
     fs.writeFileSync(signedPath, signedPdfBytes);
 
-    console.log("MULTI-PAGE SIGN SUCCESS ✅");
+    console.log("SIGNATURE APPLIED ✅");
 
     res.json({ file: signedFilename });
 
@@ -239,6 +201,52 @@ router.get("/pages/:filename", authMiddleware, async (req, res) => {
 
   } catch (err) {
     console.error("PAGE COUNT ERROR:", err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+
+// =========================
+// ✅ ACCEPT / REJECT DOCUMENT ⭐⭐⭐
+// =========================
+router.post("/decision", authMiddleware, async (req, res) => {
+  try {
+    const { id, decision, decision_reason } = req.body;
+
+    if (!id || !decision) {
+      return res.status(400).json({ error: "Missing decision data" });
+    }
+
+    if (!["accepted", "rejected"].includes(decision)) {
+      return res.status(400).json({ error: "Invalid decision value" });
+    }
+
+    const updateData = {
+      decision,
+      status: decision === "accepted" ? "approved" : "rejected",
+    };
+
+    if (decision === "rejected") {
+      updateData.decision_reason = decision_reason || "No reason provided";
+    }
+
+    const { error } = await supabase
+      .from("documents")
+      .update(updateData)
+      .eq("id", id)
+      .eq("owner", req.user.id);
+
+    if (error) {
+      console.error("DECISION ERROR:", error);
+      return res.status(400).json({ error: error.message });
+    }
+
+    console.log("DOCUMENT DECISION UPDATED ✅");
+
+    res.json({ message: "Decision saved successfully ✅" });
+
+  } catch (err) {
+    console.error("DECISION SERVER ERROR:", err);
     res.status(500).json({ error: err.message });
   }
 });
