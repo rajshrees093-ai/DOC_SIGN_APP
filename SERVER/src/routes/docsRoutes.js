@@ -66,9 +66,10 @@ router.post(
 
       const { error } = await supabase.from("documents").insert([
         {
-          filename: file.originalname, // visible name
-          path: file.filename,         // stored filename
+          filename: file.originalname,
+          path: file.filename,
           owner: req.user.id,
+          status: "pending", // ⭐⭐⭐ DAY 7
         },
       ]);
 
@@ -88,6 +89,38 @@ router.post(
 
 
 // =========================
+// ✅ UPDATE DOCUMENT STATUS
+// =========================
+router.put("/:id/status", authMiddleware, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { status } = req.body;
+
+    if (!status) {
+      return res.status(400).json({ error: "Status required" });
+    }
+
+    const { error } = await supabase
+      .from("documents")
+      .update({ status })
+      .eq("id", id)
+      .eq("owner", req.user.id);
+
+    if (error) {
+      console.error("STATUS UPDATE ERROR:", error);
+      return res.status(400).json({ error: error.message });
+    }
+
+    res.json({ message: "Status updated ✅" });
+
+  } catch (err) {
+    console.error("SERVER ERROR:", err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+
+// =========================
 // ✅ DELETE DOCUMENT
 // =========================
 router.delete("/:id", authMiddleware, async (req, res) => {
@@ -98,7 +131,7 @@ router.delete("/:id", authMiddleware, async (req, res) => {
       .from("documents")
       .delete()
       .eq("id", id)
-      .eq("owner", req.user.id); // security check ⭐
+      .eq("owner", req.user.id);
 
     if (error) {
       console.error("DELETE ERROR:", error);
@@ -115,7 +148,7 @@ router.delete("/:id", authMiddleware, async (req, res) => {
 
 
 // =========================
-// ✅ SIGN PDF (MULTI-SIGNATURE + PAGE SUPPORT)
+// ✅ SIGN PDF (MULTI-PAGE SAFE ⭐⭐⭐)
 // =========================
 router.post("/sign", authMiddleware, async (req, res) => {
   try {
@@ -137,12 +170,20 @@ router.post("/sign", authMiddleware, async (req, res) => {
     const pages = pdfDoc.getPages();
 
     for (const sig of signatures) {
-      const { x, y, image, size, page } = sig;
+      const {
+        x,
+        y,
+        image,
+        size,
+        page = 1, // ⭐ DEFAULT PAGE SAFETY
+      } = sig;
 
       const pageIndex = Number(page) - 1;
 
-      if (!pages[pageIndex]) {
-        return res.status(400).json({ error: "Invalid page number" });
+      if (pageIndex < 0 || pageIndex >= pages.length) {
+        return res.status(400).json({
+          error: `Invalid page number: ${page}`,
+        });
       }
 
       const base64Data = image.replace(/^data:image\/png;base64,/, "");
@@ -165,7 +206,7 @@ router.post("/sign", authMiddleware, async (req, res) => {
 
     fs.writeFileSync(signedPath, signedPdfBytes);
 
-    console.log("SIGNATURE APPLIED ✅");
+    console.log("MULTI-PAGE SIGN SUCCESS ✅");
 
     res.json({ file: signedFilename });
 
@@ -177,7 +218,7 @@ router.post("/sign", authMiddleware, async (req, res) => {
 
 
 // =========================
-// ✅ GET PDF PAGE COUNT ⭐⭐⭐
+// ✅ GET PDF PAGE COUNT
 // =========================
 router.get("/pages/:filename", authMiddleware, async (req, res) => {
   try {

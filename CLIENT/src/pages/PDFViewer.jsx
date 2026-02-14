@@ -183,7 +183,7 @@ function PDFViewer() {
         x: block.x + 10,
         y: block.y + 10,
         size: block.width - 20,
-        page: selectedPage,
+        page: selectedPage, // ⭐⭐⭐ CRITICAL FIX
         image,
       },
     ]);
@@ -214,6 +214,22 @@ function PDFViewer() {
       <h2>PDF Preview & Sign ✍</h2>
 
       {totalPages && <h3>📄 Total Pages: {totalPages}</h3>}
+
+      {/* ✅ PAGE SELECTOR ⭐⭐⭐ */}
+      {totalPages && (
+        <select
+          value={selectedPage}
+          onChange={(e) => setSelectedPage(Number(e.target.value))}
+        >
+          {Array.from({ length: totalPages }, (_, i) => (
+            <option key={i + 1} value={i + 1}>
+              Page {i + 1}
+            </option>
+          ))}
+        </select>
+      )}
+
+      <br /><br />
 
       <button onClick={addBlock}>➕ Add Signature Space</button>
       <button onClick={deleteBlock} style={{ marginLeft: 10 }}>
@@ -253,7 +269,7 @@ function PDFViewer() {
           }}
         />
 
-        {/* SIGNATURE SPACES WITH ORDER BADGE ⭐⭐⭐ */}
+        {/* BLOCKS */}
         {blocks.map((block, index) => (
           <div
             key={index}
@@ -272,27 +288,6 @@ function PDFViewer() {
               cursor: "move",
             }}
           >
-            {/* ORDER BADGE ⭐⭐⭐ */}
-            <div
-              style={{
-                position: "absolute",
-                top: -10,
-                left: -10,
-                background: "green",
-                color: "white",
-                width: 24,
-                height: 24,
-                borderRadius: "50%",
-                fontSize: 12,
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                fontWeight: "bold",
-              }}
-            >
-              {index + 1}
-            </div>
-
             <div
               onMouseDown={(e) => startBlockResize(e, index)}
               style={{
