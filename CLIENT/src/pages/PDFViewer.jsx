@@ -14,7 +14,6 @@ function PDFViewer() {
 
   const [signatures, setSignatures] = useState([]);
 
-  // ⭐ SIGNATURE SPACES
   const [blocks, setBlocks] = useState([
     { x: 200, y: 150, width: 200, height: 100 },
   ]);
@@ -25,9 +24,9 @@ function PDFViewer() {
   const [resizeBlock, setResizeBlock] = useState(null);
 
   const [dragSigIndex, setDragSigIndex] = useState(null);
-  const [sigOffset, setSigOffset] = useState({ x: 0, y: 0 });
-
   const [resizeSigIndex, setResizeSigIndex] = useState(null);
+
+  const [sigOffset, setSigOffset] = useState({ x: 0, y: 0 });
 
   // ================= PAGE COUNT =================
   useEffect(() => {
@@ -38,7 +37,7 @@ function PDFViewer() {
         headers: { Authorization: `Bearer ${token}` },
       })
       .then((res) => setTotalPages(res.data.pages))
-      .catch(console.error);
+      .catch((err) => console.error("PAGE FETCH ERROR:", err));
   }, [filename]);
 
   // ================= BLOCK CONTROLS =================
@@ -104,21 +103,25 @@ function PDFViewer() {
 
   // ================= MOUSE MOVE ENGINE =================
   const handleMouseMove = (e) => {
+    if (!containerRef.current) return;
+
     const rect = containerRef.current.getBoundingClientRect();
 
+    // BLOCK DRAG
     if (dragBlock !== null) {
       const updated = [...blocks];
       const block = updated[dragBlock];
 
       updated[dragBlock] = {
         ...block,
-        x: e.clientX - rect.left - block.width / 2,
-        y: e.clientY - rect.top - block.height / 2,
+        x: Math.max(0, e.clientX - rect.left - block.width / 2),
+        y: Math.max(0, e.clientY - rect.top - block.height / 2),
       };
 
       setBlocks(updated);
     }
 
+    // BLOCK RESIZE
     if (resizeBlock !== null) {
       const updated = [...blocks];
       const block = updated[resizeBlock];
@@ -132,6 +135,7 @@ function PDFViewer() {
       setBlocks(updated);
     }
 
+    // SIGNATURE DRAG
     if (dragSigIndex !== null) {
       const updated = [...signatures];
       const sig = updated[dragSigIndex];
@@ -145,6 +149,7 @@ function PDFViewer() {
       setSignatures(updated);
     }
 
+    // SIGNATURE RESIZE
     if (resizeSigIndex !== null) {
       const updated = [...signatures];
       const sig = updated[resizeSigIndex];
@@ -183,7 +188,7 @@ function PDFViewer() {
         x: block.x + 10,
         y: block.y + 10,
         size: block.width - 20,
-        page: selectedPage, // ⭐⭐⭐ CRITICAL FIX
+        page: selectedPage,
         image,
       },
     ]);
@@ -204,7 +209,7 @@ function PDFViewer() {
       window.open(`http://localhost:5000/uploads/${res.data.file}`);
 
     } catch (err) {
-      console.error(err);
+      console.error("SIGN ERROR:", err);
       alert("Signing failed ❌");
     }
   };
@@ -215,7 +220,6 @@ function PDFViewer() {
 
       {totalPages && <h3>📄 Total Pages: {totalPages}</h3>}
 
-      {/* ✅ PAGE SELECTOR ⭐⭐⭐ */}
       {totalPages && (
         <select
           value={selectedPage}
@@ -269,7 +273,6 @@ function PDFViewer() {
           }}
         />
 
-        {/* BLOCKS */}
         {blocks.map((block, index) => (
           <div
             key={index}
@@ -303,7 +306,6 @@ function PDFViewer() {
           </div>
         ))}
 
-        {/* SIGNATURES */}
         {signatures.map((sig, index) =>
           sig.page === selectedPage ? (
             <div
@@ -322,6 +324,7 @@ function PDFViewer() {
                 style={{
                   width: sig.size,
                   border: "1px dashed red",
+                  cursor: "move",
                 }}
               />
 

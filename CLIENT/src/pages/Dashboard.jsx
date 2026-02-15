@@ -1,11 +1,13 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import axios from "axios";
 
 function Dashboard() {
   const [docs, setDocs] = useState([]);
   const [reason, setReason] = useState("");
   const [filter, setFilter] = useState("all");
-  const [file, setFile] = useState(null); // ⭐ Upload state
+  const [file, setFile] = useState(null);
+
+  const fileInputRef = useRef(null); // ⭐ for resetting input
 
   useEffect(() => {
     const token = localStorage.getItem("token");
@@ -18,6 +20,7 @@ function Dashboard() {
     fetchDocs();
   }, []);
 
+  // ================= FETCH DOCUMENTS =================
   const fetchDocs = async () => {
     const token = localStorage.getItem("token");
 
@@ -33,7 +36,7 @@ function Dashboard() {
     }
   };
 
-  // ================= UPLOAD PDF ⭐⭐⭐ =================
+  // ================= UPLOAD PDF =================
   const handleUpload = async () => {
     if (!file) {
       alert("Choose PDF first ❌");
@@ -43,26 +46,38 @@ function Dashboard() {
     const token = localStorage.getItem("token");
 
     const formData = new FormData();
-    formData.append("file", file);
+    formData.append("file", file); // ⭐ MUST MATCH BACKEND
 
     try {
       const res = await axios.post(
         "http://localhost:5000/api/docs/upload",
         formData,
-        { headers: { Authorization: `Bearer ${token}` } }
+        {
+          headers: {
+            "Content-Type": "multipart/form-data", // ⭐⭐⭐ CRITICAL FIX
+            Authorization: `Bearer ${token}`,
+          },
+        }
       );
 
       alert(res.data.message);
+
       setFile(null);
+
+      // ⭐ Reset file picker visually
+      if (fileInputRef.current) {
+        fileInputRef.current.value = "";
+      }
+
       fetchDocs();
 
     } catch (err) {
-      console.error(err);
+      console.error("UPLOAD ERROR:", err.response?.data || err.message);
       alert("Upload failed ❌");
     }
   };
 
-  // ================= DELETE DOCUMENT ⭐⭐⭐ =================
+  // ================= DELETE DOCUMENT =================
   const handleDelete = async (id) => {
     const token = localStorage.getItem("token");
 
@@ -74,11 +89,12 @@ function Dashboard() {
       fetchDocs();
 
     } catch (err) {
-      console.error(err);
+      console.error("DELETE ERROR:", err);
       alert("Delete failed ❌");
     }
   };
 
+  // ================= APPROVE / REJECT =================
   const handleDecision = async (id, decision) => {
     const token = localStorage.getItem("token");
 
@@ -94,36 +110,38 @@ function Dashboard() {
       fetchDocs();
 
     } catch (err) {
-      console.error(err);
+      console.error("DECISION ERROR:", err);
       alert("Decision failed ❌");
     }
   };
 
+  // ================= HELPERS =================
   const getStatusColor = (status) => {
     if (status === "approved") return "green";
     if (status === "rejected") return "red";
     return "orange";
   };
 
-  // ================= COUNTERS =================
   const pendingCount = docs.filter(d => d.status === "pending").length;
   const approvedCount = docs.filter(d => d.status === "approved").length;
   const rejectedCount = docs.filter(d => d.status === "rejected").length;
 
-  // ================= FILTER =================
   const filteredDocs = docs.filter((doc) => {
     if (filter === "all") return true;
     return doc.status === filter;
   });
 
+  // ================= UI =================
   return (
     <div style={{ padding: 20 }}>
       <h2>📄 Document Dashboard</h2>
 
-      {/* ================= UPLOAD SECTION ⭐⭐⭐ ================= */}
+      {/* ================= UPLOAD SECTION ================= */}
       <div style={{ marginBottom: 20 }}>
         <input
+          ref={fileInputRef}
           type="file"
+          accept="application/pdf" // ⭐ Prevent wrong files
           onChange={(e) => setFile(e.target.files[0])}
         />
 
@@ -194,7 +212,6 @@ function Dashboard() {
               </p>
             )}
 
-            {/* ================= DECISION CONTROLS ================= */}
             {doc.status === "pending" && (
               <>
                 <input
@@ -219,7 +236,6 @@ function Dashboard() {
               </>
             )}
 
-            {/* ================= DELETE BUTTON ⭐⭐⭐ ================= */}
             <button
               onClick={() => handleDelete(doc.id)}
               style={{ marginTop: 10 }}
