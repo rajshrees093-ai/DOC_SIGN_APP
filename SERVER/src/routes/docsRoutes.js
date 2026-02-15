@@ -13,16 +13,55 @@ const router = express.Router();
 
 
 // =========================
+// ✅ Ensure Upload Folder Exists
+// =========================
+const uploadDir = path.join(__dirname, "../../uploads");
+
+if (!fs.existsSync(uploadDir)) {
+  fs.mkdirSync(uploadDir, { recursive: true });
+  console.log("Uploads folder created ✅");
+}
+
+
+// =========================
 // ✅ Multer Storage Config
 // =========================
 const storage = multer.diskStorage({
-  destination: "uploads/",
+  destination: (req, file, cb) => {
+    cb(null, uploadDir);
+  },
   filename: (req, file, cb) => {
-    cb(null, Date.now() + path.extname(file.originalname));
+    const uniqueName = Date.now() + path.extname(file.originalname);
+    cb(null, uniqueName);
   },
 });
 
-const upload = multer({ storage });
+
+// =========================
+// ✅ File Filter (PDF ONLY)
+// =========================
+const fileFilter = (req, file, cb) => {
+  const isPdfMime = file.mimetype === "application/pdf";
+  const isPdfExt = path.extname(file.originalname).toLowerCase() === ".pdf";
+
+  if (!isPdfMime || !isPdfExt) {
+    return cb(new Error("Only PDF files are allowed"), false);
+  }
+
+  cb(null, true);
+};
+
+
+// =========================
+// ✅ Multer Instance
+// =========================
+const upload = multer({
+  storage,
+  fileFilter,
+  limits: {
+    fileSize: 10 * 1024 * 1024, // 10MB
+  },
+});
 
 
 // =========================
@@ -30,15 +69,20 @@ const upload = multer({ storage });
 // =========================
 router.get("/", authMiddleware, async (req, res) => {
   try {
+    console.log("LOGGED USER:", req.user.id);
+
     const { data, error } = await supabase
       .from("documents")
       .select("*")
-      .eq("owner", req.user.id);
+      .eq("owner", req.user.id)
+      .order("created_at", { ascending: false });
 
     if (error) {
       console.error("FETCH ERROR:", error);
       return res.status(400).json({ error: error.message });
     }
+
+    console.log("FETCHED DOCS:", data);
 
     res.json(data);
 
@@ -52,34 +96,54 @@ router.get("/", authMiddleware, async (req, res) => {
 // =========================
 // ✅ UPLOAD DOCUMENT
 // =========================
-router.post("/upload", authMiddleware, upload.single("file"), async (req, res) => {
-  try {
-    if (!req.file) {
-      return res.status(400).json({ message: "No file uploaded" });
+router.post("/upload", authMiddleware, (req, res) => {
+  upload.single("file")(req, res, async (err) => {
+    try {
+      if (err) {
+        console.error("MULTER ERROR:", err.message);
+        return res.status(400).json({ error: err.message });
+      }
+
+      if (!req.file) {
+        return res.status(400).json({ error: "No file received" });
+      }
+
+      const file = req.file;
+
+      console.log("FILE RECEIVED ✅", file.originalname);
+
+      const { data, error } = await supabase
+        .from("documents")
+        .insert([
+          {
+            filename: file.originalname,
+            path: file.filename,
+            owner: req.user.id,
+            status: "pending",
+          },
+        ])
+        .select();
+
+      if (error) {
+        console.error("SUPABASE ERROR:", error);
+
+        fs.unlinkSync(file.path);
+
+        return res.status(400).json({ error: error.message });
+      }
+
+      console.log("DOCUMENT SAVED TO DB ✅");
+
+      res.json({
+        message: "Upload successful ✅",
+        document: data,
+      });
+
+    } catch (error) {
+      console.error("UPLOAD ERROR:", error);
+      res.status(500).json({ error: error.message });
     }
-
-    const file = req.file;
-
-    const { error } = await supabase.from("documents").insert([
-      {
-        filename: file.originalname,
-        path: file.filename,
-        owner: req.user.id,
-        status: "pending", // ⭐ DAY 7 IMPORTANT
-      },
-    ]);
-
-    if (error) {
-      console.error("SUPABASE ERROR:", error);
-      return res.status(400).json({ error: error.message });
-    }
-
-    res.json({ message: "Upload successful ✅" });
-
-  } catch (err) {
-    console.error("UPLOAD ERROR:", err);
-    res.status(500).json({ error: err.message });
-  }
+  });
 });
 
 
@@ -90,21 +154,64 @@ router.delete("/:id", authMiddleware, async (req, res) => {
   try {
     const { id } = req.params;
 
-    const { error } = await supabase
+    const { data, error } = await supabase
+      .from("documents")
+      .select("*")
+      .eq("id", id)
+      .eq("owner", req.user.id)
+      .single();
+
+    if (error || !data) {
+      return res.status(404).json({ error: "Document not found" });
+    }
+
+    const filePath = path.join(uploadDir, data.path);
+
+    if (fs.existsSync(filePath)) {
+      fs.unlinkSync(filePath);
+      console.log("FILE DELETED FROM DISK ✅");
+    }
+
+    const { error: deleteError } = await supabase
       .from("documents")
       .delete()
       .eq("id", id)
       .eq("owner", req.user.id);
 
-    if (error) {
-      console.error("DELETE ERROR:", error);
-      return res.status(400).json({ error: error.message });
+    if (deleteError) {
+      console.error("DELETE ERROR:", deleteError);
+      return res.status(400).json({ error: deleteError.message });
     }
 
     res.json({ message: "Deleted successfully ✅" });
 
   } catch (err) {
     console.error("SERVER ERROR:", err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+
+// =========================
+// ✅ PAGE COUNT
+// =========================
+router.get("/pages/:filename", authMiddleware, async (req, res) => {
+  try {
+    const { filename } = req.params;
+
+    const filePath = path.join(uploadDir, filename);
+
+    if (!fs.existsSync(filePath)) {
+      return res.status(404).json({ error: "File not found" });
+    }
+
+    const pdfBytes = fs.readFileSync(filePath);
+    const pdfDoc = await PDFDocument.load(pdfBytes);
+
+    res.json({ pages: pdfDoc.getPages().length });
+
+  } catch (err) {
+    console.error("PAGE COUNT ERROR:", err);
     res.status(500).json({ error: err.message });
   }
 });
@@ -121,7 +228,9 @@ router.post("/sign", authMiddleware, async (req, res) => {
       return res.status(400).json({ error: "Missing signature data" });
     }
 
-    const filePath = path.join("uploads", filename);
+    const filePath = path.join(uploadDir, filename);
+
+    console.log("SIGN FILE PATH:", filePath);
 
     if (!fs.existsSync(filePath)) {
       return res.status(404).json({ error: "PDF not found" });
@@ -157,7 +266,7 @@ router.post("/sign", authMiddleware, async (req, res) => {
     const signedPdfBytes = await pdfDoc.save();
 
     const signedFilename = `signed-${filename}`;
-    const signedPath = path.join("uploads", signedFilename);
+    const signedPath = path.join(uploadDir, signedFilename);
 
     fs.writeFileSync(signedPath, signedPdfBytes);
 
@@ -173,32 +282,7 @@ router.post("/sign", authMiddleware, async (req, res) => {
 
 
 // =========================
-// ✅ PAGE COUNT
-// =========================
-router.get("/pages/:filename", authMiddleware, async (req, res) => {
-  try {
-    const { filename } = req.params;
-
-    const filePath = path.join("uploads", filename);
-
-    if (!fs.existsSync(filePath)) {
-      return res.status(404).json({ error: "File not found" });
-    }
-
-    const pdfBytes = fs.readFileSync(filePath);
-    const pdfDoc = await PDFDocument.load(pdfBytes);
-
-    res.json({ pages: pdfDoc.getPages().length });
-
-  } catch (err) {
-    console.error("PAGE COUNT ERROR:", err);
-    res.status(500).json({ error: err.message });
-  }
-});
-
-
-// =========================
-// ✅ DOCUMENT DECISION (DAY 7)
+// ✅ DOCUMENT DECISION
 // =========================
 router.post("/decision", authMiddleware, async (req, res) => {
   try {
@@ -235,5 +319,6 @@ router.post("/decision", authMiddleware, async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
+
 
 module.exports = router;
