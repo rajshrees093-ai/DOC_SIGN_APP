@@ -7,7 +7,7 @@ function Dashboard() {
   const [filter, setFilter] = useState("all");
   const [file, setFile] = useState(null);
 
-  // ⭐ Day-9 email input storage per document
+  // ⭐ Stores signer emails per document
   const [emails, setEmails] = useState({});
 
   useEffect(() => {
@@ -52,7 +52,9 @@ function Dashboard() {
       const res = await axios.post(
         "http://localhost:5000/api/docs/upload",
         formData,
-        { headers: { Authorization: `Bearer ${token}` } }
+        {
+          headers: { Authorization: `Bearer ${token}` },
+        }
       );
 
       alert(res.data.message || "Upload successful ✅");
@@ -123,9 +125,10 @@ function Dashboard() {
 
       alert(res.data.message);
 
-      // ⭐ Opens Ethereal email preview
+      // ✅ Open Ethereal preview
       if (res.data.preview) {
-        window.open(res.data.preview);
+        console.log("EMAIL PREVIEW:", res.data.preview);
+        window.open(res.data.preview, "_blank");
       }
 
     } catch (err) {
@@ -223,7 +226,7 @@ function Dashboard() {
               Status: {doc.status}
             </p>
 
-            {/* ================= DAY-9 EMAIL UI ================= */}
+            {/* ================= DAY-9 EMAIL SECTION ================= */}
             <div style={{ marginBottom: 10 }}>
               <input
                 type="text"
