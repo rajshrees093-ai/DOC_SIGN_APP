@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState } from "react";
 import axios from "axios";
 
 function Dashboard() {
@@ -7,7 +7,8 @@ function Dashboard() {
   const [filter, setFilter] = useState("all");
   const [file, setFile] = useState(null);
 
-  const fileInputRef = useRef(null); // ⭐ for resetting input
+  // ⭐ Day-9 email input storage per document
+  const [emails, setEmails] = useState({});
 
   useEffect(() => {
     const token = localStorage.getItem("token");
@@ -20,7 +21,6 @@ function Dashboard() {
     fetchDocs();
   }, []);
 
-  // ================= FETCH DOCUMENTS =================
   const fetchDocs = async () => {
     const token = localStorage.getItem("token");
 
@@ -46,33 +46,22 @@ function Dashboard() {
     const token = localStorage.getItem("token");
 
     const formData = new FormData();
-    formData.append("file", file); // ⭐ MUST MATCH BACKEND
+    formData.append("file", file);
 
     try {
       const res = await axios.post(
         "http://localhost:5000/api/docs/upload",
         formData,
-        {
-          headers: {
-            "Content-Type": "multipart/form-data", // ⭐⭐⭐ CRITICAL FIX
-            Authorization: `Bearer ${token}`,
-          },
-        }
+        { headers: { Authorization: `Bearer ${token}` } }
       );
 
-      alert(res.data.message);
+      alert(res.data.message || "Upload successful ✅");
 
       setFile(null);
-
-      // ⭐ Reset file picker visually
-      if (fileInputRef.current) {
-        fileInputRef.current.value = "";
-      }
-
       fetchDocs();
 
     } catch (err) {
-      console.error("UPLOAD ERROR:", err.response?.data || err.message);
+      console.error(err);
       alert("Upload failed ❌");
     }
   };
@@ -89,12 +78,12 @@ function Dashboard() {
       fetchDocs();
 
     } catch (err) {
-      console.error("DELETE ERROR:", err);
+      console.error(err);
       alert("Delete failed ❌");
     }
   };
 
-  // ================= APPROVE / REJECT =================
+  // ================= DECISION =================
   const handleDecision = async (id, decision) => {
     const token = localStorage.getItem("token");
 
@@ -110,28 +99,58 @@ function Dashboard() {
       fetchDocs();
 
     } catch (err) {
-      console.error("DECISION ERROR:", err);
+      console.error(err);
       alert("Decision failed ❌");
     }
   };
 
-  // ================= HELPERS =================
+  // ================= DAY-9 REQUEST SIGNATURE =================
+  const requestSignature = async (docId) => {
+    const token = localStorage.getItem("token");
+    const email = emails[docId];
+
+    if (!email) {
+      alert("Enter signer email ❌");
+      return;
+    }
+
+    try {
+      const res = await axios.post(
+        "http://localhost:5000/api/docs/request-signature",
+        { documentId: docId, email },
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+
+      alert(res.data.message);
+
+      // ⭐ Opens Ethereal email preview
+      if (res.data.preview) {
+        window.open(res.data.preview);
+      }
+
+    } catch (err) {
+      console.error(err);
+      alert("Signature request failed ❌");
+    }
+  };
+
   const getStatusColor = (status) => {
     if (status === "approved") return "green";
     if (status === "rejected") return "red";
     return "orange";
   };
 
+  // ================= COUNTERS =================
   const pendingCount = docs.filter(d => d.status === "pending").length;
   const approvedCount = docs.filter(d => d.status === "approved").length;
   const rejectedCount = docs.filter(d => d.status === "rejected").length;
 
+  // ================= FILTER =================
   const filteredDocs = docs.filter((doc) => {
     if (filter === "all") return true;
     return doc.status === filter;
   });
 
-  // ================= UI =================
   return (
     <div style={{ padding: 20 }}>
       <h2>📄 Document Dashboard</h2>
@@ -139,9 +158,7 @@ function Dashboard() {
       {/* ================= UPLOAD SECTION ================= */}
       <div style={{ marginBottom: 20 }}>
         <input
-          ref={fileInputRef}
           type="file"
-          accept="application/pdf" // ⭐ Prevent wrong files
           onChange={(e) => setFile(e.target.files[0])}
         />
 
@@ -206,12 +223,26 @@ function Dashboard() {
               Status: {doc.status}
             </p>
 
-            {doc.status === "rejected" && doc.decision_reason && (
-              <p style={{ color: "red" }}>
-                Reason: {doc.decision_reason}
-              </p>
-            )}
+            {/* ================= DAY-9 EMAIL UI ================= */}
+            <div style={{ marginBottom: 10 }}>
+              <input
+                type="text"
+                placeholder="Signer email"
+                value={emails[doc.id] || ""}
+                onChange={(e) =>
+                  setEmails({ ...emails, [doc.id]: e.target.value })
+                }
+              />
 
+              <button
+                onClick={() => requestSignature(doc.id)}
+                style={{ marginLeft: 10 }}
+              >
+                📧 Request Signature
+              </button>
+            </div>
+
+            {/* ================= DECISION CONTROLS ================= */}
             {doc.status === "pending" && (
               <>
                 <input
