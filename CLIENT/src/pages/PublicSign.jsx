@@ -17,8 +17,6 @@ function PublicSign() {
         `http://localhost:5000/api/docs/public-sign/${token}`
       );
 
-      console.log("PUBLIC DOC:", res.data);
-
       setDoc(res.data.document);
 
     } catch (err) {
@@ -30,9 +28,24 @@ function PublicSign() {
   if (error) return <h2>{error}</h2>;
   if (!doc) return <h2>Loading document...</h2>;
 
-  // ⭐ TEMP DEBUG RENDER
   return (
-    <pre>{JSON.stringify(doc, null, 2)}</pre>
+    <div style={{ padding: 20 }}>
+      <h2>📄 Sign Document</h2>
+      <h3>{doc.filename}</h3>
+
+      <iframe
+        src={`http://localhost:5000/uploads/${doc.path}`}
+        width="100%"
+        height="600px"
+        title="PDF Preview"
+      />
+
+      <br /><br />
+
+      <button onClick={() => alert("Signature UI comes next 👍")}>
+        ✍ Sign Document
+      </button>
+    </div>
   );
 }
 
