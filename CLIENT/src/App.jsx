@@ -2,7 +2,7 @@ import { Routes, Route } from "react-router-dom";
 import Login from "./pages/Login";
 import Dashboard from "./pages/Dashboard";
 import PDFViewer from "./pages/PDFViewer";
-import PublicSign from "./pages/PublicSign";   // ⭐ ADD THIS
+import PublicSign from "./pages/PublicSign";   // ⭐ CRITICAL IMPORT
 
 function App() {
   return (
@@ -11,7 +11,7 @@ function App() {
       <Route path="/dashboard" element={<Dashboard />} />
       <Route path="/preview/:filename" element={<PDFViewer />} />
 
-      {/* ⭐ DAY-9 PUBLIC SIGNING ROUTE */}
+      {/* ⭐ DAY-9 PUBLIC SIGN ROUTE */}
       <Route path="/public-sign/:token" element={<PublicSign />} />
     </Routes>
   );

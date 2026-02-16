@@ -1,21 +1,23 @@
-import { useParams } from "react-router-dom";
 import { useEffect, useState } from "react";
+import { useParams } from "react-router-dom";
 import axios from "axios";
 
 function PublicSign() {
   const { token } = useParams();
   const [doc, setDoc] = useState(null);
-  const [error, setError] = useState(null);
+  const [error, setError] = useState("");
 
   useEffect(() => {
-    validateToken();
+    fetchDocument();
   }, []);
 
-  const validateToken = async () => {
+  const fetchDocument = async () => {
     try {
       const res = await axios.get(
         `http://localhost:5000/api/docs/public-sign/${token}`
       );
+
+      console.log("PUBLIC DOC:", res.data);
 
       setDoc(res.data.document);
 
@@ -26,22 +28,11 @@ function PublicSign() {
   };
 
   if (error) return <h2>{error}</h2>;
-  if (!doc) return <h2>Validating token…</h2>;
+  if (!doc) return <h2>Loading document...</h2>;
 
+  // ⭐ TEMP DEBUG RENDER
   return (
-    <div style={{ padding: 20 }}>
-      <h2>📄 Public Document Signing</h2>
-
-      <p><b>File:</b> {doc.filename}</p>
-
-      {/* ⭐ PDF LOAD */}
-      <iframe
-        src={`http://localhost:5000/uploads/${doc.path}`}
-        width="800"
-        height="500"
-        title="PDF"
-      />
-    </div>
+    <pre>{JSON.stringify(doc, null, 2)}</pre>
   );
 }
 
