@@ -6,7 +6,6 @@ const path = require("path");
 const fs = require("fs");
 const { PDFDocument } = require("pdf-lib");
 
-// ⭐ DAY-9 IMPORTS
 const nodemailer = require("nodemailer");
 const crypto = require("crypto");
 
@@ -142,14 +141,29 @@ router.get("/pages/:filename", authMiddleware, async (req, res) => {
 
 
 // =========================
-// ✅ DAY-8 — SIGN PDF
+// ✅ DAY-8 / DAY-9 — SIGN PDF (CRITICAL FIXED)
 // =========================
-router.post("/sign", authMiddleware, async (req, res) => {
+router.post("/sign", async (req, res) => {
   try {
-    const { filename, signatures } = req.body;
+    const { filename, signatures, token } = req.body;
 
     if (!filename || !signatures?.length)
       return res.status(400).json({ error: "Missing signature data" });
+
+    // ✅ Token Validation for Public Signing
+    if (token) {
+      const { data } = await supabase
+        .from("documents")
+        .select("*")
+        .eq("signing_token", token)
+        .single();
+
+      if (!data)
+        return res.status(400).json({ error: "Invalid token ❌" });
+
+      if (new Date(data.token_expires_at) < new Date())
+        return res.status(400).json({ error: "Token expired ❌" });
+    }
 
     const filePath = path.join(uploadDir, filename);
 
@@ -162,6 +176,9 @@ router.post("/sign", authMiddleware, async (req, res) => {
 
     for (const sig of signatures) {
       const pageIndex = Number(sig.page) - 1;
+
+      if (!pages[pageIndex])
+        return res.status(400).json({ error: "Invalid page number" });
 
       const pngBytes = Buffer.from(
         sig.image.replace(/^data:image\/png;base64,/, ""),
@@ -179,17 +196,23 @@ router.post("/sign", authMiddleware, async (req, res) => {
     }
 
     const signedBytes = await pdfDoc.save();
+
     const signedFilename = `signed-${filename}`;
-    fs.writeFileSync(path.join(uploadDir, signedFilename), signedBytes);
+    const signedPath = path.join(uploadDir, signedFilename);
+
+    fs.writeFileSync(signedPath, signedBytes);
 
     await supabase
       .from("documents")
       .update({ is_signed: true })
       .eq("path", filename);
 
+    console.log("FINAL SIGNED PDF GENERATED ✅");
+
     res.json({ file: signedFilename });
 
   } catch (err) {
+    console.error("SIGN ERROR:", err);
     res.status(500).json({ error: err.message });
   }
 });
@@ -233,7 +256,7 @@ router.post("/decision", authMiddleware, async (req, res) => {
 
 
 // =========================
-// ✅ DAY-9 — REQUEST SIGNATURE (ETHEREAL EMAIL)
+// ✅ DAY-9 — REQUEST SIGNATURE (ETHEREAL)
 // =========================
 router.post("/request-signature", authMiddleware, async (req, res) => {
   try {
@@ -256,7 +279,6 @@ router.post("/request-signature", authMiddleware, async (req, res) => {
 
     const signingLink = `http://localhost:5173/public-sign/${token}`;
 
-    // ⭐ ETHEREAL EMAIL
     const testAccount = await nodemailer.createTestAccount();
 
     const transporter = nodemailer.createTransport({
@@ -276,7 +298,7 @@ router.post("/request-signature", authMiddleware, async (req, res) => {
     });
 
     res.json({
-      message: "Signature link generated (Ethereal) ✅",
+      message: "Signature link generated ✅",
       preview: nodemailer.getTestMessageUrl(info),
     });
 
