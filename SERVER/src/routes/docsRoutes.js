@@ -333,5 +333,24 @@ router.get("/public-sign/:token", async (req, res) => {
   }
 });
 
+//Create Audit Fetch Route
+router.get("/audit/:documentId", authMiddleware, async (req, res) => {
+  try {
+    const { documentId } = req.params;
+
+    const { data, error } = await supabase
+      .from("audit_logs")
+      .select("*")
+      .eq("document_id", documentId)
+      .order("created_at", { ascending: false });
+
+    if (error) return res.status(400).json({ error: error.message });
+
+    res.json(data);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 
 module.exports = router;
