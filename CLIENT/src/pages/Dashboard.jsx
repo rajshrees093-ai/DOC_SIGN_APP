@@ -125,7 +125,6 @@ function Dashboard() {
 
       alert(res.data.message);
 
-      // ✅ Open Ethereal preview
       if (res.data.preview) {
         console.log("EMAIL PREVIEW:", res.data.preview);
         window.open(res.data.preview, "_blank");
@@ -137,147 +136,135 @@ function Dashboard() {
     }
   };
 
+  // ================= DAY-10 AUDIT VIEWER =================
+  const viewAudit = async (documentId) => {
+    const token = localStorage.getItem("token");
+
+    try {
+      const res = await axios.get(
+        `http://localhost:5000/api/docs/audit/${documentId}`,
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+
+      console.log("AUDIT LOGS:", res.data);
+
+      alert(JSON.stringify(res.data, null, 2));
+
+    } catch (err) {
+      console.error(err);
+      alert("Failed to fetch audit logs ❌");
+    }
+  };
+
   const getStatusColor = (status) => {
     if (status === "approved") return "green";
     if (status === "rejected") return "red";
     return "orange";
   };
 
-  // ================= COUNTERS =================
   const pendingCount = docs.filter(d => d.status === "pending").length;
   const approvedCount = docs.filter(d => d.status === "approved").length;
   const rejectedCount = docs.filter(d => d.status === "rejected").length;
 
-  // ================= FILTER =================
   const filteredDocs = docs.filter((doc) => {
     if (filter === "all") return true;
     return doc.status === filter;
   });
 
   return (
-    <div style={{ padding: 20 }}>
+    <div className="dashboard-container">
       <h2>📄 Document Dashboard</h2>
 
-      {/* ================= UPLOAD SECTION ================= */}
-      <div style={{ marginBottom: 20 }}>
-        <input
-          type="file"
-          onChange={(e) => setFile(e.target.files[0])}
-        />
+      <div className="upload-row">
+        <input type="file" onChange={(e) => setFile(e.target.files[0])} />
 
-        <button onClick={handleUpload} style={{ marginLeft: 10 }}>
+        <button className="btn" onClick={handleUpload}>
           Upload PDF ➕
         </button>
       </div>
 
-      {/* ================= FILTER BUTTONS ================= */}
-      <div style={{ marginBottom: 20 }}>
-        <button onClick={() => setFilter("all")}>
+      <div className="filters">
+        <button className="btn btn-secondary" onClick={() => setFilter("all")}>
           All ({docs.length})
         </button>
 
-        <button
-          onClick={() => setFilter("pending")}
-          style={{ marginLeft: 10 }}
-        >
+        <button className="btn btn-secondary" onClick={() => setFilter("pending")}>
           Pending ({pendingCount})
         </button>
 
-        <button
-          onClick={() => setFilter("approved")}
-          style={{ marginLeft: 10 }}
-        >
+        <button className="btn btn-secondary" onClick={() => setFilter("approved")}>
           Approved ({approvedCount})
         </button>
 
-        <button
-          onClick={() => setFilter("rejected")}
-          style={{ marginLeft: 10 }}
-        >
+        <button className="btn btn-secondary" onClick={() => setFilter("rejected")}>
           Rejected ({rejectedCount})
         </button>
       </div>
 
-      {/* ================= DOCUMENT LIST ================= */}
       {filteredDocs.length === 0 ? (
         <p>No documents found</p>
       ) : (
-        filteredDocs.map((doc) => (
-          <div
-            key={doc.id}
-            style={{
-              border: "1px solid #ccc",
-              padding: 10,
-              marginBottom: 10,
-            }}
-          >
-            <a
-              href={`/preview/${doc.path}`}
-              style={{
-                fontWeight: "bold",
-                fontSize: 16,
-                display: "block",
-              }}
-            >
-              {doc.filename}
-            </a>
+        <div className="doc-list">
+          {filteredDocs.map((doc) => (
+            <div key={doc.id} className="doc-card">
+              <a href={`/preview/${doc.path}`} className="doc-title">
+                {doc.filename}
+              </a>
 
-            <p style={{ color: getStatusColor(doc.status) }}>
-              Status: {doc.status}
-            </p>
+              <p className="doc-meta" style={{ color: getStatusColor(doc.status) }}>
+                Status: {doc.status}
+              </p>
 
-            {/* ================= DAY-9 EMAIL SECTION ================= */}
-            <div style={{ marginBottom: 10 }}>
-              <input
-                type="text"
-                placeholder="Signer email"
-                value={emails[doc.id] || ""}
-                onChange={(e) =>
-                  setEmails({ ...emails, [doc.id]: e.target.value })
-                }
-              />
+              <div className="actions-row">
+                <button className="btn btn-secondary" onClick={() => viewAudit(doc.id)}>
+                  🧾 View Audit Trail
+                </button>
 
-              <button
-                onClick={() => requestSignature(doc.id)}
-                style={{ marginLeft: 10 }}
-              >
-                📧 Request Signature
-              </button>
-            </div>
-
-            {/* ================= DECISION CONTROLS ================= */}
-            {doc.status === "pending" && (
-              <>
                 <input
+                  className="small-input"
                   type="text"
-                  placeholder="Rejection reason (optional)"
-                  value={reason}
-                  onChange={(e) => setReason(e.target.value)}
+                  placeholder="Signer email"
+                  value={emails[doc.id] || ""}
+                  onChange={(e) =>
+                    setEmails({ ...emails, [doc.id]: e.target.value })
+                  }
                 />
 
-                <br /><br />
-
-                <button onClick={() => handleDecision(doc.id, "approved")}>
-                  ✅ Approve
+                <button className="btn" onClick={() => requestSignature(doc.id)}>
+                  📧 Request Signature
                 </button>
+              </div>
 
-                <button
-                  onClick={() => handleDecision(doc.id, "rejected")}
-                  style={{ marginLeft: 10 }}
-                >
-                  ❌ Reject
+              {doc.status === "pending" && (
+                <div style={{ marginTop: 8 }}>
+                  <input
+                    className="small-input"
+                    type="text"
+                    placeholder="Rejection reason (optional)"
+                    value={reason}
+                    onChange={(e) => setReason(e.target.value)}
+                  />
+
+                  <div className="actions-row" style={{ marginTop: 8 }}>
+                    <button className="btn" onClick={() => handleDecision(doc.id, "approved")}>
+                      ✅ Approve
+                    </button>
+
+                    <button className="btn btn-secondary" onClick={() => handleDecision(doc.id, "rejected")}>
+                      ❌ Reject
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              <div style={{ marginTop: 10 }}>
+                <button className="btn btn-secondary" onClick={() => handleDelete(doc.id)}>
+                  Delete 🗑
                 </button>
-              </>
-            )}
-
-            <button
-              onClick={() => handleDelete(doc.id)}
-              style={{ marginTop: 10 }}
-            >
-              Delete 🗑
-            </button>
-          </div>
-        ))
+              </div>
+            </div>
+          ))}
+        </div>
       )}
     </div>
   );

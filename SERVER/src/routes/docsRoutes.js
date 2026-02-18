@@ -351,6 +351,33 @@ router.get("/audit/:documentId", authMiddleware, async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
+// =========================
+// ✅ DAY-10 AUDIT LOGGING
+// =========================
+
+const clientIp =
+  req.headers["x-forwarded-for"] ||
+  req.socket.remoteAddress ||
+  "unknown";
+
+await supabase.from("audit_logs").insert([
+  {
+    document_id: token
+      ? (await supabase
+          .from("documents")
+          .select("id")
+          .eq("signing_token", token)
+          .single()).data.id
+      : null,
+
+    action: "SIGNED",
+    ip_address: clientIp,
+    created_at: new Date(),
+  },
+]);
+
+console.log("AUDIT LOG INSERTED ✅");
+
 
 
 module.exports = router;

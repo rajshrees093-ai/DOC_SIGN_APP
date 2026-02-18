@@ -215,7 +215,7 @@ function PDFViewer() {
   };
 
   return (
-    <div style={{ padding: 20 }}>
+    <div className="pdf-viewer-page">
       <h2>PDF Preview & Sign ✍</h2>
 
       {totalPages && <h3>📄 Total Pages: {totalPages}</h3>}
@@ -233,124 +233,59 @@ function PDFViewer() {
         </select>
       )}
 
-      <br /><br />
-
-      <button onClick={addBlock}>➕ Add Signature Space</button>
-      <button onClick={deleteBlock} style={{ marginLeft: 10 }}>
-        ❌ Delete Space
-      </button>
-      <button onClick={placeSignature} style={{ marginLeft: 10 }}>
-        ✅ Place Signature
-      </button>
-      <button onClick={finalizePDF} style={{ marginLeft: 10 }}>
-        🚀 Finalize PDF
-      </button>
-
-      <br /><br />
+      <div className="pdf-controls">
+        <button className="btn" onClick={addBlock}>➕ Add Signature Space</button>
+        <button className="btn btn-secondary" onClick={deleteBlock}>❌ Delete Space</button>
+        <button className="btn" onClick={placeSignature}>✅ Place Signature</button>
+        <button className="btn btn-secondary" onClick={finalizePDF}>🚀 Finalize PDF</button>
+      </div>
 
       <div
         ref={containerRef}
         onMouseMove={handleMouseMove}
         onMouseUp={stopActions}
-        style={{
-          position: "relative",
-          width: 800,
-          height: 500,
-          border: "2px solid #ccc",
-          background: "white",
-        }}
+        className="pdf-canvas-container"
       >
         <iframe
           src={`http://localhost:5000/uploads/${filename}#toolbar=0`}
-          width="800"
-          height="500"
           title="PDF"
-          style={{
-            position: "absolute",
-            top: 0,
-            left: 0,
-            pointerEvents: "none",
-          }}
+          className="pdf-iframe"
         />
 
         {blocks.map((block, index) => (
           <div
             key={index}
             onMouseDown={() => startBlockDrag(index)}
-            style={{
-              position: "absolute",
-              left: block.x,
-              top: block.y,
-              width: block.width,
-              height: block.height,
-              border:
-                activeBlock === index
-                  ? "2px solid green"
-                  : "2px dashed gray",
-              background: "rgba(0,255,0,0.05)",
-              cursor: "move",
-            }}
+            className={`block ${activeBlock === index ? "active" : ""}`}
+            style={{ left: block.x, top: block.y, width: block.width, height: block.height }}
           >
-            <div
-              onMouseDown={(e) => startBlockResize(e, index)}
-              style={{
-                width: 12,
-                height: 12,
-                background: "green",
-                position: "absolute",
-                right: -6,
-                bottom: -6,
-                cursor: "nwse-resize",
-              }}
-            />
+            <div onMouseDown={(e) => startBlockResize(e, index)} className="block-handle" />
           </div>
         ))}
 
         {signatures.map((sig, index) =>
           sig.page === selectedPage ? (
-            <div
-              key={index}
-              style={{
-                position: "absolute",
-                left: sig.x,
-                top: sig.y,
-              }}
-            >
+            <div key={index} style={{ position: "absolute", left: sig.x, top: sig.y }}>
               <img
                 src={sig.image}
                 alt="sig"
                 onMouseDown={(e) => startSignatureDrag(e, index)}
                 onDoubleClick={() => deleteSignature(index)}
-                style={{
-                  width: sig.size,
-                  border: "1px dashed red",
-                  cursor: "move",
-                }}
+                className="signature-img"
+                style={{ width: sig.size }}
               />
 
-              <div
-                onMouseDown={(e) => startSignatureResize(e, index)}
-                style={{
-                  width: 12,
-                  height: 12,
-                  background: "blue",
-                  position: "absolute",
-                  right: -6,
-                  bottom: -6,
-                  cursor: "nwse-resize",
-                }}
-              />
+              <div onMouseDown={(e) => startSignatureResize(e, index)} className="sig-resize" />
             </div>
           ) : null
         )}
       </div>
 
-      <br /><br />
-
       <SignatureCanvas
         ref={sigPadRef}
         penColor="black"
         canvasProps={{ width: 500, height: 200 }}
+        className="sig-canvas"
       />
     </div>
   );

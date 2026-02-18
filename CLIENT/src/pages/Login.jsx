@@ -45,30 +45,38 @@ function Login({ onLoginSuccess }) {
   }
 
   return (
-    <div>
-      <h2>Login</h2>
+    <div className="login-wrapper">
+      <div className="login-card">
+        <h2 className="login-title">Sign in to DocSign</h2>
 
-      <form onSubmit={handleLogin}>
-        <input
-          type="email"
-          placeholder="Enter email"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-        />
+        <form className="login-form" onSubmit={handleLogin}>
+          <div className="form-row">
+            <input
+              className="input"
+              type="email"
+              placeholder="Email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+            />
+          </div>
 
-        <br /><br />
+          <div className="form-row">
+            <input
+              className="input"
+              type="password"
+              placeholder="Password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+            />
+          </div>
 
-        <input
-          type="password"
-          placeholder="Enter password"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-        />
+          <div className="form-row">
+            <button className="btn" type="submit">Login</button>
+          </div>
 
-        <br /><br />
-
-        <button type="submit">Login</button>
-      </form>
+          <div className="login-help">Don't have an account? Contact the admin to create one.</div>
+        </form>
+      </div>
     </div>
   );
 }
