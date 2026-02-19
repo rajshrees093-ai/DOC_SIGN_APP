@@ -10,9 +10,10 @@ function Dashboard() {
   // ⭐ Stores signer emails per document
   const [emails, setEmails] = useState({});
 
-  // ⭐ NEW: Audit modal state
-  const [auditLogs, setAuditLogs] = useState(null);
-  const [showAudit, setShowAudit] = useState(false);
+  // ⭐ NEW: Inline audit system
+  const [auditLogs, setAuditLogs] = useState({});
+  const [openAuditFor, setOpenAuditFor] = useState(null);
+  const [loadingAudit, setLoadingAudit] = useState(null);
 
   useEffect(() => {
     const token = localStorage.getItem("token");
@@ -111,7 +112,7 @@ function Dashboard() {
     }
   };
 
-  // ================= DAY-9 REQUEST SIGNATURE =================
+  // ================= REQUEST SIGNATURE =================
   const requestSignature = async (docId) => {
     const token = localStorage.getItem("token");
     const email = emails[docId];
@@ -141,12 +142,18 @@ function Dashboard() {
     }
   };
 
-  // ================= DAY-10 AUDIT VIEWER =================
+  // ================= DAY-10 INLINE AUDIT =================
   const viewAudit = async (documentId) => {
     const token = localStorage.getItem("token");
 
     try {
-      console.log("Fetching audit for:", documentId);
+      if (openAuditFor === documentId) {
+        setOpenAuditFor(null);
+        return;
+      }
+
+      setLoadingAudit(documentId);
+      setOpenAuditFor(documentId);
 
       const res = await axios.get(
         `http://localhost:5000/api/docs/audit/${documentId}`,
@@ -155,17 +162,16 @@ function Dashboard() {
 
       console.log("AUDIT RESPONSE:", res.data);
 
-      if (!res.data.length) {
-        alert("No audit records for this document ❌");
-        return;
-      }
-
-      setAuditLogs(res.data);
-      setShowAudit(true);
+      setAuditLogs(prev => ({
+        ...prev,
+        [documentId]: res.data,
+      }));
 
     } catch (err) {
       console.error(err);
       alert("Failed to fetch audit logs ❌");
+    } finally {
+      setLoadingAudit(null);
     }
   };
 
@@ -224,12 +230,18 @@ function Dashboard() {
                 {doc.filename}
               </a>
 
-              <p className="doc-meta" style={{ color: getStatusColor(doc.status) }}>
+              <p
+                className="doc-meta"
+                style={{ color: getStatusColor(doc.status) }}
+              >
                 Status: {doc.status}
               </p>
 
               <div className="actions-row">
-                <button className="btn btn-secondary" onClick={() => viewAudit(doc.id)}>
+                <button
+                  className="btn btn-secondary"
+                  onClick={() => viewAudit(doc.id)}
+                >
                   🧾 View Audit Trail
                 </button>
 
@@ -248,6 +260,24 @@ function Dashboard() {
                 </button>
               </div>
 
+              {/* ⭐ INLINE AUDIT PANEL */}
+              {openAuditFor === doc.id && (
+                <div className="audit-panel">
+                  {loadingAudit === doc.id ? (
+                    <p>Loading audit trail...</p>
+                  ) : !auditLogs[doc.id]?.length ? (
+                    <p>No audit records yet 📭</p>
+                  ) : (
+                    auditLogs[doc.id].map((log) => (
+                      <div key={log.id} className="audit-row">
+                        ✅ {log.action} | 🌐 {log.ip_address} | ⏱{" "}
+                        {new Date(log.created_at).toLocaleString()}
+                      </div>
+                    ))
+                  )}
+                </div>
+              )}
+
               {doc.status === "pending" && (
                 <div style={{ marginTop: 8 }}>
                   <input
@@ -259,11 +289,17 @@ function Dashboard() {
                   />
 
                   <div className="actions-row" style={{ marginTop: 8 }}>
-                    <button className="btn" onClick={() => handleDecision(doc.id, "approved")}>
+                    <button
+                      className="btn"
+                      onClick={() => handleDecision(doc.id, "approved")}
+                    >
                       ✅ Approve
                     </button>
 
-                    <button className="btn btn-secondary" onClick={() => handleDecision(doc.id, "rejected")}>
+                    <button
+                      className="btn btn-secondary"
+                      onClick={() => handleDecision(doc.id, "rejected")}
+                    >
                       ❌ Reject
                     </button>
                   </div>
@@ -271,34 +307,15 @@ function Dashboard() {
               )}
 
               <div style={{ marginTop: 10 }}>
-                <button className="btn btn-secondary" onClick={() => handleDelete(doc.id)}>
+                <button
+                  className="btn btn-secondary"
+                  onClick={() => handleDelete(doc.id)}
+                >
                   Delete 🗑
                 </button>
               </div>
             </div>
           ))}
-        </div>
-      )}
-
-      {/* ================= NEW AUDIT MODAL ================= */}
-      {showAudit && (
-        <div className="audit-modal">
-          <div className="audit-box">
-            <h3>🧾 Audit Trail</h3>
-
-            {auditLogs.map((log) => (
-              <div key={log.id} className="audit-row">
-                <p><b>Action:</b> {log.action}</p>
-                <p><b>IP:</b> {log.ip_address}</p>
-                <p><b>Time:</b> {new Date(log.created_at).toLocaleString()}</p>
-                <hr />
-              </div>
-            ))}
-
-            <button className="btn btn-secondary" onClick={() => setShowAudit(false)}>
-              Close
-            </button>
-          </div>
         </div>
       )}
     </div>
