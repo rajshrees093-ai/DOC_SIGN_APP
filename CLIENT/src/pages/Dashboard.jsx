@@ -7,10 +7,7 @@ function Dashboard() {
   const [filter, setFilter] = useState("all");
   const [file, setFile] = useState(null);
 
-  // ⭐ Stores signer emails per document
   const [emails, setEmails] = useState({});
-
-  // ⭐ NEW: Inline audit system
   const [auditLogs, setAuditLogs] = useState({});
   const [openAuditFor, setOpenAuditFor] = useState(null);
   const [loadingAudit, setLoadingAudit] = useState(null);
@@ -42,7 +39,6 @@ function Dashboard() {
     }
   };
 
-  // ================= UPLOAD PDF =================
   const handleUpload = async () => {
     if (!file) {
       alert("Choose PDF first ❌");
@@ -74,7 +70,6 @@ function Dashboard() {
     }
   };
 
-  // ================= DELETE DOCUMENT =================
   const handleDelete = async (id) => {
     const token = localStorage.getItem("token");
 
@@ -91,7 +86,6 @@ function Dashboard() {
     }
   };
 
-  // ================= DECISION =================
   const handleDecision = async (id, decision) => {
     const token = localStorage.getItem("token");
 
@@ -112,7 +106,6 @@ function Dashboard() {
     }
   };
 
-  // ================= REQUEST SIGNATURE =================
   const requestSignature = async (docId) => {
     const token = localStorage.getItem("token");
     const email = emails[docId];
@@ -142,7 +135,6 @@ function Dashboard() {
     }
   };
 
-  // ================= DAY-10 INLINE AUDIT =================
   const viewAudit = async (documentId) => {
     const token = localStorage.getItem("token");
 
@@ -176,9 +168,9 @@ function Dashboard() {
   };
 
   const getStatusColor = (status) => {
-    if (status === "approved") return "green";
-    if (status === "rejected") return "red";
-    return "orange";
+    if (status === "approved") return "text-green-600";
+    if (status === "rejected") return "text-red-600";
+    return "text-yellow-600";
   };
 
   const pendingCount = docs.filter(d => d.status === "pending").length;
@@ -191,62 +183,58 @@ function Dashboard() {
   });
 
   return (
-    <div className="dashboard-container">
-      <h2>📄 Document Dashboard</h2>
+    /* ✅ ONLY LINE CHANGED HERE */
+    <div className="dashboard-container max-w-5xl mx-auto p-4">
+      <h2 className="text-2xl font-bold mb-4">📄 Document Dashboard</h2>
 
-      <div className="upload-row">
+      <div className="upload-row flex gap-2 mb-4 flex-wrap">
         <input type="file" onChange={(e) => setFile(e.target.files[0])} />
 
-        <button className="btn" onClick={handleUpload}>
+        <button className="btn bg-blue-500 text-white px-4 py-2 rounded-lg" onClick={handleUpload}>
           Upload PDF ➕
         </button>
       </div>
 
-      <div className="filters">
-        <button className="btn btn-secondary" onClick={() => setFilter("all")}>
-          All ({docs.length})
-        </button>
-
-        <button className="btn btn-secondary" onClick={() => setFilter("pending")}>
-          Pending ({pendingCount})
-        </button>
-
-        <button className="btn btn-secondary" onClick={() => setFilter("approved")}>
-          Approved ({approvedCount})
-        </button>
-
-        <button className="btn btn-secondary" onClick={() => setFilter("rejected")}>
-          Rejected ({rejectedCount})
-        </button>
+      <div className="filters flex gap-2 mb-6 flex-wrap">
+        {[
+          { key: "all", label: `All (${docs.length})` },
+          { key: "pending", label: `Pending (${pendingCount})` },
+          { key: "approved", label: `Approved (${approvedCount})` },
+          { key: "rejected", label: `Rejected (${rejectedCount})` },
+        ].map(btn => (
+          <button
+            key={btn.key}
+            onClick={() => setFilter(btn.key)}
+            className={`btn btn-secondary px-4 py-2 rounded-lg border transition ${
+              filter === btn.key ? "bg-blue-500 text-white" : ""
+            }`}
+          >
+            {btn.label}
+          </button>
+        ))}
       </div>
 
       {filteredDocs.length === 0 ? (
         <p>No documents found</p>
       ) : (
-        <div className="doc-list">
+        <div className="doc-list grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {filteredDocs.map((doc) => (
-            <div key={doc.id} className="doc-card">
-              <a href={`/preview/${doc.path}`} className="doc-title">
+            <div key={doc.id} className="doc-card border rounded-xl p-4 shadow-sm bg-white">
+              <a href={`/preview/${doc.path}`} className="doc-title font-semibold text-blue-600">
                 {doc.filename}
               </a>
 
-              <p
-                className="doc-meta"
-                style={{ color: getStatusColor(doc.status) }}
-              >
+              <p className={`doc-meta font-medium ${getStatusColor(doc.status)}`}>
                 Status: {doc.status}
               </p>
 
-              <div className="actions-row">
-                <button
-                  className="btn btn-secondary"
-                  onClick={() => viewAudit(doc.id)}
-                >
+              <div className="actions-row flex flex-col gap-2 mt-2">
+                <button className="btn btn-secondary" onClick={() => viewAudit(doc.id)}>
                   🧾 View Audit Trail
                 </button>
 
                 <input
-                  className="small-input"
+                  className="small-input border rounded px-2 py-1 text-sm"
                   type="text"
                   placeholder="Signer email"
                   value={emails[doc.id] || ""}
@@ -255,21 +243,20 @@ function Dashboard() {
                   }
                 />
 
-                <button className="btn" onClick={() => requestSignature(doc.id)}>
+                <button className="btn bg-blue-500 text-white px-3 py-1 rounded" onClick={() => requestSignature(doc.id)}>
                   📧 Request Signature
                 </button>
               </div>
 
-              {/* ⭐ INLINE AUDIT PANEL */}
               {openAuditFor === doc.id && (
-                <div className="audit-panel">
+                <div className="audit-panel mt-2 text-sm bg-gray-50 p-2 rounded">
                   {loadingAudit === doc.id ? (
                     <p>Loading audit trail...</p>
                   ) : !auditLogs[doc.id]?.length ? (
                     <p>No audit records yet 📭</p>
                   ) : (
                     auditLogs[doc.id].map((log) => (
-                      <div key={log.id} className="audit-row">
+                      <div key={log.id}>
                         ✅ {log.action} | 🌐 {log.ip_address} | ⏱{" "}
                         {new Date(log.created_at).toLocaleString()}
                       </div>
@@ -281,25 +268,19 @@ function Dashboard() {
               {doc.status === "pending" && (
                 <div style={{ marginTop: 8 }}>
                   <input
-                    className="small-input"
+                    className="small-input border rounded px-2 py-1 text-sm w-full"
                     type="text"
                     placeholder="Rejection reason (optional)"
                     value={reason}
                     onChange={(e) => setReason(e.target.value)}
                   />
 
-                  <div className="actions-row" style={{ marginTop: 8 }}>
-                    <button
-                      className="btn"
-                      onClick={() => handleDecision(doc.id, "approved")}
-                    >
+                  <div className="actions-row flex gap-2 mt-2">
+                    <button className="btn bg-green-500 text-white px-3 py-1 rounded" onClick={() => handleDecision(doc.id, "approved")}>
                       ✅ Approve
                     </button>
 
-                    <button
-                      className="btn btn-secondary"
-                      onClick={() => handleDecision(doc.id, "rejected")}
-                    >
+                    <button className="btn btn-secondary bg-red-500 text-white px-3 py-1 rounded" onClick={() => handleDecision(doc.id, "rejected")}>
                       ❌ Reject
                     </button>
                   </div>
@@ -307,10 +288,7 @@ function Dashboard() {
               )}
 
               <div style={{ marginTop: 10 }}>
-                <button
-                  className="btn btn-secondary"
-                  onClick={() => handleDelete(doc.id)}
-                >
+                <button className="btn btn-secondary text-red-500" onClick={() => handleDelete(doc.id)}>
                   Delete 🗑
                 </button>
               </div>
