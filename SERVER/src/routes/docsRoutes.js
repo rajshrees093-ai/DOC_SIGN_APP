@@ -27,7 +27,7 @@ if (!fs.existsSync(uploadDir)) {
 
 
 // =========================
-// ✅ Multer Storage Config
+// ✅ Multer Config
 // =========================
 const storage = multer.diskStorage({
   destination: (req, file, cb) => cb(null, uploadDir),
@@ -37,25 +37,17 @@ const storage = multer.diskStorage({
   },
 });
 
-
-// =========================
-// ✅ File Filter (PDF ONLY)
-// =========================
 const fileFilter = (req, file, cb) => {
   const isPdfMime = file.mimetype === "application/pdf";
   const isPdfExt = path.extname(file.originalname).toLowerCase() === ".pdf";
 
   if (!isPdfMime || !isPdfExt) {
-    return cb(new Error("Only PDF files are allowed"), false);
+    return cb(new Error("Only PDF files allowed"), false);
   }
 
   cb(null, true);
 };
 
-
-// =========================
-// ✅ Multer Instance
-// =========================
 const upload = multer({
   storage,
   fileFilter,
@@ -85,7 +77,7 @@ router.get("/", authMiddleware, async (req, res) => {
 
 
 // =========================
-// ✅ UPLOAD DOCUMENT
+// ✅ UPLOAD PDF
 // =========================
 router.post("/upload", authMiddleware, (req, res) => {
   upload.single("file")(req, res, async (err) => {
@@ -141,7 +133,7 @@ router.get("/pages/:filename", authMiddleware, async (req, res) => {
 
 
 // =========================
-// ✅ DAY-8 / DAY-9 — SIGN PDF (CRITICAL FIXED)
+// ✅ SIGN PDF + AUDIT LOG
 // =========================
 router.post("/sign", async (req, res) => {
   try {
@@ -150,7 +142,8 @@ router.post("/sign", async (req, res) => {
     if (!filename || !signatures?.length)
       return res.status(400).json({ error: "Missing signature data" });
 
-    // ✅ Token Validation for Public Signing
+    let documentRecord = null;
+
     if (token) {
       const { data } = await supabase
         .from("documents")
@@ -158,11 +151,11 @@ router.post("/sign", async (req, res) => {
         .eq("signing_token", token)
         .single();
 
-      if (!data)
-        return res.status(400).json({ error: "Invalid token ❌" });
-
+      if (!data) return res.status(400).json({ error: "Invalid token ❌" });
       if (new Date(data.token_expires_at) < new Date())
         return res.status(400).json({ error: "Token expired ❌" });
+
+      documentRecord = data;
     }
 
     const filePath = path.join(uploadDir, filename);
@@ -176,9 +169,6 @@ router.post("/sign", async (req, res) => {
 
     for (const sig of signatures) {
       const pageIndex = Number(sig.page) - 1;
-
-      if (!pages[pageIndex])
-        return res.status(400).json({ error: "Invalid page number" });
 
       const pngBytes = Buffer.from(
         sig.image.replace(/^data:image\/png;base64,/, ""),
@@ -196,88 +186,51 @@ router.post("/sign", async (req, res) => {
     }
 
     const signedBytes = await pdfDoc.save();
-
     const signedFilename = `signed-${filename}`;
-    const signedPath = path.join(uploadDir, signedFilename);
 
-    fs.writeFileSync(signedPath, signedBytes);
+    fs.writeFileSync(path.join(uploadDir, signedFilename), signedBytes);
 
     await supabase
       .from("documents")
       .update({ is_signed: true })
       .eq("path", filename);
 
-    console.log("FINAL SIGNED PDF GENERATED ✅");
+    const clientIp =
+      req.headers["x-forwarded-for"] ||
+      req.socket.remoteAddress ||
+      "unknown";
+
+    await supabase.from("audit_logs").insert([
+      {
+        document_id: documentRecord?.id || null,
+        action: "signed",
+        ip_address: clientIp.toString(),
+      },
+    ]);
 
     res.json({ file: signedFilename });
 
   } catch (err) {
-    console.error("SIGN ERROR:", err);
+    console.error(err);
     res.status(500).json({ error: err.message });
   }
 });
 
 
 // =========================
-// ✅ DOCUMENT DECISION
-// =========================
-router.post("/decision", authMiddleware, async (req, res) => {
-  try {
-    const { id, decision, reason } = req.body;
-
-    const { data } = await supabase
-      .from("documents")
-      .select("status, is_signed")
-      .eq("id", id)
-      .single();
-
-    if (!data.is_signed)
-      return res.status(400).json({ error: "Document not signed ❌" });
-
-    if (data.status !== "pending")
-      return res.status(400).json({ error: "Decision already made ❌" });
-
-    await supabase
-      .from("documents")
-      .update({
-        status: decision,
-        decision_reason: reason || null,
-        decided_at: new Date(),
-        decided_by: req.user.id,
-      })
-      .eq("id", id);
-
-    res.json({ message: `Document ${decision} ✅` });
-
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-
-// =========================
-// ✅ DAY-9 — REQUEST SIGNATURE (ETHEREAL)
+// ✅ REQUEST SIGNATURE (ETHEREAL)
 // =========================
 router.post("/request-signature", authMiddleware, async (req, res) => {
   try {
     const { documentId, email } = req.body;
-
-    if (!documentId || !email)
-      return res.status(400).json({ error: "Missing documentId or email" });
 
     const token = crypto.randomBytes(32).toString("hex");
     const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
 
     await supabase
       .from("documents")
-      .update({
-        signing_token: token,
-        token_expires_at: expiresAt,
-      })
-      .eq("id", documentId)
-      .eq("owner", req.user.id);
-
-    const signingLink = `http://localhost:5173/public-sign/${token}`;
+      .update({ signing_token: token, token_expires_at: expiresAt })
+      .eq("id", documentId);
 
     const testAccount = await nodemailer.createTestAccount();
 
@@ -291,14 +244,14 @@ router.post("/request-signature", authMiddleware, async (req, res) => {
     });
 
     const info = await transporter.sendMail({
-      from: '"Doc Signature App" <no-reply@test.com>',
+      from: '"Doc App" <no-reply@test.com>',
       to: email,
-      subject: "Document Signature Request",
-      text: `Click to sign document:\n${signingLink}`,
+      subject: "Sign Document",
+      text: `Sign: http://localhost:5173/public-sign/${token}`,
     });
 
     res.json({
-      message: "Signature link generated ✅",
+      message: "Signature request sent ✅",
       preview: nodemailer.getTestMessageUrl(info),
     });
 
@@ -309,75 +262,20 @@ router.post("/request-signature", authMiddleware, async (req, res) => {
 
 
 // =========================
-// ✅ DAY-9 — PUBLIC TOKEN VALIDATION
+// ✅ FETCH AUDIT LOGS
 // =========================
-router.get("/public-sign/:token", async (req, res) => {
-  try {
-    const { token } = req.params;
-
-    const { data } = await supabase
-      .from("documents")
-      .select("*")
-      .eq("signing_token", token)
-      .single();
-
-    if (!data) return res.status(404).json({ error: "Invalid token ❌" });
-
-    if (new Date(data.token_expires_at) < new Date())
-      return res.status(400).json({ error: "Token expired ❌" });
-
-    res.json({ document: data });
-
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-//Create Audit Fetch Route
 router.get("/audit/:documentId", authMiddleware, async (req, res) => {
   try {
-    const { documentId } = req.params;
-
-    const { data, error } = await supabase
+    const { data } = await supabase
       .from("audit_logs")
       .select("*")
-      .eq("document_id", documentId)
-      .order("created_at", { ascending: false });
-
-    if (error) return res.status(400).json({ error: error.message });
+      .eq("document_id", req.params.documentId);
 
     res.json(data);
+
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
-// =========================
-// ✅ DAY-10 AUDIT LOGGING
-// =========================
-
-const clientIp =
-  req.headers["x-forwarded-for"] ||
-  req.socket.remoteAddress ||
-  "unknown";
-
-await supabase.from("audit_logs").insert([
-  {
-    document_id: token
-      ? (await supabase
-          .from("documents")
-          .select("id")
-          .eq("signing_token", token)
-          .single()).data.id
-      : null,
-
-    action: "SIGNED",
-    ip_address: clientIp,
-    created_at: new Date(),
-  },
-]);
-
-console.log("AUDIT LOG INSERTED ✅");
-
-
 
 module.exports = router;

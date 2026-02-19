@@ -196,6 +196,7 @@ function PDFViewer() {
     sigPadRef.current.clear();
   };
 
+  // ================= FINALIZE PDF =================
   const finalizePDF = async () => {
     try {
       const token = localStorage.getItem("token");
@@ -206,7 +207,9 @@ function PDFViewer() {
         { headers: { Authorization: `Bearer ${token}` } }
       );
 
-      window.open(`http://localhost:5000/uploads/${res.data.file}`);
+      const signedFile = res.data.file;
+
+      window.open(`http://localhost:5000/uploads/${signedFile}`, "_blank");
 
     } catch (err) {
       console.error("SIGN ERROR:", err);
@@ -247,7 +250,7 @@ function PDFViewer() {
         className="pdf-canvas-container"
       >
         <iframe
-          src={`http://localhost:5000/uploads/${filename}#toolbar=0`}
+          src={`http://localhost:5000/uploads/${filename}#page=${selectedPage}&toolbar=0`}
           title="PDF"
           className="pdf-iframe"
         />
@@ -274,7 +277,6 @@ function PDFViewer() {
                 className="signature-img"
                 style={{ width: sig.size }}
               />
-
               <div onMouseDown={(e) => startSignatureResize(e, index)} className="sig-resize" />
             </div>
           ) : null
