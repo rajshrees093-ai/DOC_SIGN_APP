@@ -56,6 +56,40 @@ const upload = multer({
 
 
 // =========================
+// ✅ CLIENT IP HELPER (Day-10 Critical)
+// =========================
+function getClientIp(req) {
+  return (
+    req.headers["x-forwarded-for"]?.split(",")[0] ||
+    req.socket.remoteAddress ||
+    "unknown"
+  );
+}
+
+
+// =========================
+// ✅ AUDIT LOGGER HELPER
+// =========================
+async function insertAuditLog(documentId, action, req) {
+  try {
+    const ip = getClientIp(req);
+
+    await supabase.from("audit_logs").insert([
+      {
+        document_id: documentId,
+        action,
+        ip_address: ip.toString(),
+      },
+    ]);
+
+    console.log(`AUDIT LOG INSERTED ✅ → ${action}`);
+  } catch (err) {
+    console.error("AUDIT LOG FAILED ❌", err.message);
+  }
+}
+
+
+// =========================
 // ✅ GET USER DOCUMENTS
 // =========================
 router.get("/", authMiddleware, async (req, res) => {
@@ -69,7 +103,6 @@ router.get("/", authMiddleware, async (req, res) => {
     if (error) return res.status(400).json({ error: error.message });
 
     res.json(data);
-
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -77,7 +110,7 @@ router.get("/", authMiddleware, async (req, res) => {
 
 
 // =========================
-// ✅ UPLOAD PDF
+// ✅ UPLOAD PDF + AUDIT
 // =========================
 router.post("/upload", authMiddleware, (req, res) => {
   upload.single("file")(req, res, async (err) => {
@@ -87,7 +120,7 @@ router.post("/upload", authMiddleware, (req, res) => {
 
       const file = req.file;
 
-      const { error } = await supabase.from("documents").insert([
+      const { data, error } = await supabase.from("documents").insert([
         {
           filename: file.originalname,
           path: file.filename,
@@ -95,12 +128,14 @@ router.post("/upload", authMiddleware, (req, res) => {
           status: "pending",
           is_signed: false,
         },
-      ]);
+      ]).select().single();
 
       if (error) {
         fs.unlinkSync(file.path);
         return res.status(400).json({ error: error.message });
       }
+
+      await insertAuditLog(data.id, "uploaded", req);
 
       res.json({ message: "Upload successful ✅" });
 
@@ -133,7 +168,7 @@ router.get("/pages/:filename", authMiddleware, async (req, res) => {
 
 
 // =========================
-// ✅ SIGN PDF + AUDIT LOG
+// ✅ SIGN PDF + RELIABLE AUDIT
 // =========================
 router.post("/sign", async (req, res) => {
   try {
@@ -142,21 +177,15 @@ router.post("/sign", async (req, res) => {
     if (!filename || !signatures?.length)
       return res.status(400).json({ error: "Missing signature data" });
 
-    let documentRecord = null;
+    // ⭐ ALWAYS FETCH DOCUMENT RECORD
+    const { data: documentRecord } = await supabase
+      .from("documents")
+      .select("*")
+      .eq(token ? "signing_token" : "path", token || filename)
+      .single();
 
-    if (token) {
-      const { data } = await supabase
-        .from("documents")
-        .select("*")
-        .eq("signing_token", token)
-        .single();
-
-      if (!data) return res.status(400).json({ error: "Invalid token ❌" });
-      if (new Date(data.token_expires_at) < new Date())
-        return res.status(400).json({ error: "Token expired ❌" });
-
-      documentRecord = data;
-    }
+    if (!documentRecord)
+      return res.status(400).json({ error: "Document not found ❌" });
 
     const filePath = path.join(uploadDir, filename);
 
@@ -193,32 +222,21 @@ router.post("/sign", async (req, res) => {
     await supabase
       .from("documents")
       .update({ is_signed: true })
-      .eq("path", filename);
+      .eq("id", documentRecord.id);
 
-    const clientIp =
-      req.headers["x-forwarded-for"] ||
-      req.socket.remoteAddress ||
-      "unknown";
-
-    await supabase.from("audit_logs").insert([
-      {
-        document_id: documentRecord?.id || null,
-        action: "signed",
-        ip_address: clientIp.toString(),
-      },
-    ]);
+    await insertAuditLog(documentRecord.id, "signed", req);
 
     res.json({ file: signedFilename });
 
   } catch (err) {
-    console.error(err);
+    console.error("SIGN ERROR ❌", err);
     res.status(500).json({ error: err.message });
   }
 });
 
 
 // =========================
-// ✅ REQUEST SIGNATURE (ETHEREAL)
+// ✅ REQUEST SIGNATURE + AUDIT
 // =========================
 router.post("/request-signature", authMiddleware, async (req, res) => {
   try {
@@ -250,6 +268,8 @@ router.post("/request-signature", authMiddleware, async (req, res) => {
       text: `Sign: http://localhost:5173/public-sign/${token}`,
     });
 
+    await insertAuditLog(documentId, "signature_requested", req);
+
     res.json({
       message: "Signature request sent ✅",
       preview: nodemailer.getTestMessageUrl(info),
@@ -266,10 +286,13 @@ router.post("/request-signature", authMiddleware, async (req, res) => {
 // =========================
 router.get("/audit/:documentId", authMiddleware, async (req, res) => {
   try {
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from("audit_logs")
       .select("*")
-      .eq("document_id", req.params.documentId);
+      .eq("document_id", req.params.documentId)
+      .order("created_at", { ascending: false });
+
+    if (error) return res.status(400).json({ error: error.message });
 
     res.json(data);
 
