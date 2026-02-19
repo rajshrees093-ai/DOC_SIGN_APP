@@ -17,7 +17,10 @@ app.use("/uploads", express.static(path.join(__dirname, "../uploads")));
 app.use("/api/auth", require("./routes/authRoutes"));
 app.use("/api/docs", require("./routes/docsRoutes"));
 
-/* ✅ Health check (VERY USEFUL for debugging) */
+/* ✅ ADD THIS LINE (Day 11 Fix) */
+app.use("/api/signatures", require("./routes/signatureRoutes"));
+
+/* ✅ Health check */
 app.get("/", (req, res) => {
   res.send("API Running ✅");
 });
