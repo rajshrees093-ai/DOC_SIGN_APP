@@ -1,4 +1,5 @@
-console.log("🔥 SIGNATURE ROUTES FILE EXECUTED");
+console.log("🔥 SIGNATURE ROUTES DEFINITELY LOADED");
+
 const express = require("express");
 const router = express.Router();
 const supabase = require("../utils/supabaseClient");
