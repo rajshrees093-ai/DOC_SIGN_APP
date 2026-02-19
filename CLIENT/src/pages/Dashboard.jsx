@@ -7,11 +7,11 @@ function Dashboard() {
   const [filter, setFilter] = useState("all");
   const [file, setFile] = useState(null);
 
+  // ⭐ Stores signer emails per document
   const [emails, setEmails] = useState({});
-  const [loading, setLoading] = useState(false);
 
-  // ⭐ Day-10 Audit Panel State
-  const [auditLogs, setAuditLogs] = useState([]);
+  // ⭐ NEW: Audit modal state
+  const [auditLogs, setAuditLogs] = useState(null);
   const [showAudit, setShowAudit] = useState(false);
 
   useEffect(() => {
@@ -33,7 +33,9 @@ function Dashboard() {
         headers: { Authorization: `Bearer ${token}` },
       });
 
+      console.log("DOCUMENTS:", res.data);
       setDocs(res.data);
+
     } catch (err) {
       console.error("Docs fetch error:", err);
     }
@@ -47,27 +49,27 @@ function Dashboard() {
     }
 
     const token = localStorage.getItem("token");
+
     const formData = new FormData();
     formData.append("file", file);
 
     try {
-      setLoading(true);
-
       const res = await axios.post(
         "http://localhost:5000/api/docs/upload",
         formData,
-        { headers: { Authorization: `Bearer ${token}` } }
+        {
+          headers: { Authorization: `Bearer ${token}` },
+        }
       );
 
       alert(res.data.message || "Upload successful ✅");
 
       setFile(null);
       fetchDocs();
+
     } catch (err) {
       console.error(err);
       alert("Upload failed ❌");
-    } finally {
-      setLoading(false);
     }
   };
 
@@ -76,18 +78,15 @@ function Dashboard() {
     const token = localStorage.getItem("token");
 
     try {
-      setLoading(true);
-
       await axios.delete(`http://localhost:5000/api/docs/${id}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
 
       fetchDocs();
+
     } catch (err) {
       console.error(err);
       alert("Delete failed ❌");
-    } finally {
-      setLoading(false);
     }
   };
 
@@ -96,8 +95,6 @@ function Dashboard() {
     const token = localStorage.getItem("token");
 
     try {
-      setLoading(true);
-
       const res = await axios.post(
         "http://localhost:5000/api/docs/decision",
         { id, decision, reason },
@@ -107,15 +104,14 @@ function Dashboard() {
       alert(res.data.message);
       setReason("");
       fetchDocs();
+
     } catch (err) {
       console.error(err);
       alert("Decision failed ❌");
-    } finally {
-      setLoading(false);
     }
   };
 
-  // ================= REQUEST SIGNATURE =================
+  // ================= DAY-9 REQUEST SIGNATURE =================
   const requestSignature = async (docId) => {
     const token = localStorage.getItem("token");
     const email = emails[docId];
@@ -126,8 +122,6 @@ function Dashboard() {
     }
 
     try {
-      setLoading(true);
-
       const res = await axios.post(
         "http://localhost:5000/api/docs/request-signature",
         { documentId: docId, email },
@@ -137,35 +131,41 @@ function Dashboard() {
       alert(res.data.message);
 
       if (res.data.preview) {
+        console.log("EMAIL PREVIEW:", res.data.preview);
         window.open(res.data.preview, "_blank");
       }
+
     } catch (err) {
       console.error(err);
       alert("Signature request failed ❌");
-    } finally {
-      setLoading(false);
     }
   };
 
-  // ================= AUDIT VIEWER =================
+  // ================= DAY-10 AUDIT VIEWER =================
   const viewAudit = async (documentId) => {
     const token = localStorage.getItem("token");
 
     try {
-      setLoading(true);
+      console.log("Fetching audit for:", documentId);
 
       const res = await axios.get(
         `http://localhost:5000/api/docs/audit/${documentId}`,
         { headers: { Authorization: `Bearer ${token}` } }
       );
 
+      console.log("AUDIT RESPONSE:", res.data);
+
+      if (!res.data.length) {
+        alert("No audit records for this document ❌");
+        return;
+      }
+
       setAuditLogs(res.data);
       setShowAudit(true);
+
     } catch (err) {
       console.error(err);
       alert("Failed to fetch audit logs ❌");
-    } finally {
-      setLoading(false);
     }
   };
 
@@ -214,10 +214,8 @@ function Dashboard() {
         </button>
       </div>
 
-      {loading && <p>⏳ Processing...</p>}
-
       {filteredDocs.length === 0 ? (
-        <p>No documents found 📭</p>
+        <p>No documents found</p>
       ) : (
         <div className="doc-list">
           {filteredDocs.map((doc) => (
@@ -226,28 +224,9 @@ function Dashboard() {
                 {doc.filename}
               </a>
 
-              <p style={{ color: getStatusColor(doc.status) }}>
+              <p className="doc-meta" style={{ color: getStatusColor(doc.status) }}>
                 Status: {doc.status}
               </p>
-
-              {/* ⭐ Signed PDF Quick Access */}
-              {doc.is_signed && (
-                <button
-                  className="btn"
-                  onClick={() =>
-                    window.open(`http://localhost:5000/uploads/signed-${doc.path}`)
-                  }
-                >
-                  ✅ Open Signed PDF
-                </button>
-              )}
-
-              {/* ⭐ Rejection Reason */}
-              {doc.status === "rejected" && doc.decision_reason && (
-                <p style={{ color: "red" }}>
-                  Reason: {doc.decision_reason}
-                </p>
-              )}
 
               <div className="actions-row">
                 <button className="btn btn-secondary" onClick={() => viewAudit(doc.id)}>
@@ -270,7 +249,7 @@ function Dashboard() {
               </div>
 
               {doc.status === "pending" && (
-                <>
+                <div style={{ marginTop: 8 }}>
                   <input
                     className="small-input"
                     type="text"
@@ -279,7 +258,7 @@ function Dashboard() {
                     onChange={(e) => setReason(e.target.value)}
                   />
 
-                  <div className="actions-row">
+                  <div className="actions-row" style={{ marginTop: 8 }}>
                     <button className="btn" onClick={() => handleDecision(doc.id, "approved")}>
                       ✅ Approve
                     </button>
@@ -288,37 +267,38 @@ function Dashboard() {
                       ❌ Reject
                     </button>
                   </div>
-                </>
+                </div>
               )}
 
-              <button className="btn btn-secondary" onClick={() => handleDelete(doc.id)}>
-                Delete 🗑
-              </button>
+              <div style={{ marginTop: 10 }}>
+                <button className="btn btn-secondary" onClick={() => handleDelete(doc.id)}>
+                  Delete 🗑
+                </button>
+              </div>
             </div>
           ))}
         </div>
       )}
 
-      {/* ⭐ Audit Panel UI */}
+      {/* ================= NEW AUDIT MODAL ================= */}
       {showAudit && (
-        <div className="audit-panel">
-          <h3>🧾 Audit Trail</h3>
+        <div className="audit-modal">
+          <div className="audit-box">
+            <h3>🧾 Audit Trail</h3>
 
-          {auditLogs.length === 0 ? (
-            <p>No audit records</p>
-          ) : (
-            auditLogs.map((log) => (
+            {auditLogs.map((log) => (
               <div key={log.id} className="audit-row">
-                <p>Action: {log.action}</p>
-                <p>IP: {log.ip_address}</p>
-                <p>Time: {new Date(log.created_at).toLocaleString()}</p>
+                <p><b>Action:</b> {log.action}</p>
+                <p><b>IP:</b> {log.ip_address}</p>
+                <p><b>Time:</b> {new Date(log.created_at).toLocaleString()}</p>
+                <hr />
               </div>
-            ))
-          )}
+            ))}
 
-          <button className="btn" onClick={() => setShowAudit(false)}>
-            Close
-          </button>
+            <button className="btn btn-secondary" onClick={() => setShowAudit(false)}>
+              Close
+            </button>
+          </div>
         </div>
       )}
     </div>
