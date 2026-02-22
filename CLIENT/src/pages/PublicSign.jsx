@@ -19,7 +19,7 @@ function PublicSign() {
   const fetchDocument = async () => {
     try {
       const res = await axios.get(
-        `http://localhost:5000/api/docs/public-sign/${token}`
+        `https://doc-sign-app.onrender.com/api/docs/public-sign/${token}`
       );
 
       setDoc(res.data.document);
@@ -54,14 +54,14 @@ function PublicSign() {
       ];
 
       const res = await axios.post(
-        "http://localhost:5000/api/docs/sign",
+        "https://doc-sign-app.onrender.com/api/docs/sign",
         {
           filename: doc.path,
           signatures,
         }
       );
 
-      window.open(`http://localhost:5000/uploads/${res.data.file}`);
+      window.open(`https://doc-sign-app.onrender.com/uploads/${res.data.file}`);
 
     } catch (err) {
       console.error(err);
@@ -78,7 +78,7 @@ function PublicSign() {
       <h3>{doc.filename}</h3>
 
       <iframe
-        src={`http://localhost:5000/uploads/${doc.path}`}
+        src={`https://doc-sign-app.onrender.com/uploads/${doc.path}`}
         width="100%"
         height="500px"
         title="PDF"

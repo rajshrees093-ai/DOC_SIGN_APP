@@ -27,7 +27,7 @@ function Dashboard() {
     const token = localStorage.getItem("token");
 
     try {
-      const res = await axios.get("http://localhost:5000/api/docs", {
+      const res = await axios.get("https://doc-sign-app.onrender.com/api/docs", {
         headers: { Authorization: `Bearer ${token}` },
       });
 
@@ -52,7 +52,7 @@ function Dashboard() {
 
     try {
       const res = await axios.post(
-        "http://localhost:5000/api/docs/upload",
+        "https://doc-sign-app.onrender.com/api/docs/upload",
         formData,
         {
           headers: { Authorization: `Bearer ${token}` },
@@ -74,7 +74,7 @@ function Dashboard() {
     const token = localStorage.getItem("token");
 
     try {
-      await axios.delete(`http://localhost:5000/api/docs/${id}`, {
+      await axios.delete(`https://doc-sign-app.onrender.com/api/docs/${id}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
 
@@ -91,7 +91,7 @@ function Dashboard() {
 
     try {
       const res = await axios.post(
-        "http://localhost:5000/api/docs/decision",
+        "https://doc-sign-app.onrender.com/api/docs/decision",
         { id, decision, reason },
         { headers: { Authorization: `Bearer ${token}` } }
       );
@@ -117,7 +117,7 @@ function Dashboard() {
 
     try {
       const res = await axios.post(
-        "http://localhost:5000/api/docs/request-signature",
+        "https://doc-sign-app.onrender.com/api/docs/request-signature",
         { documentId: docId, email },
         { headers: { Authorization: `Bearer ${token}` } }
       );
@@ -148,7 +148,7 @@ function Dashboard() {
       setOpenAuditFor(documentId);
 
       const res = await axios.get(
-        `http://localhost:5000/api/docs/audit/${documentId}`,
+        `https://doc-sign-app.onrender.com/api/docs/audit/${documentId}`,
         { headers: { Authorization: `Bearer ${token}` } }
       );
 

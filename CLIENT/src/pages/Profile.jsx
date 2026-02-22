@@ -7,7 +7,7 @@ function Profile({ onLogout }) {
   useEffect(() => {
     if (!token) return;
 
-    fetch("http://localhost:5000/api/auth/profile", {
+    fetch("https://doc-sign-app.onrender.com/api/auth/profile", {
       method: "GET",
       headers: {
         Authorization: `Bearer ${token}`,

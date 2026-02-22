@@ -33,7 +33,7 @@ function PDFViewer() {
     const token = localStorage.getItem("token");
 
     axios
-      .get(`http://localhost:5000/api/docs/pages/${filename}`, {
+      .get(`https://doc-sign-app.onrender.com/api/docs/pages/${filename}`, {
         headers: { Authorization: `Bearer ${token}` },
       })
       .then((res) => setTotalPages(res.data.pages))
@@ -202,14 +202,14 @@ function PDFViewer() {
       const token = localStorage.getItem("token");
 
       const res = await axios.post(
-        "http://localhost:5000/api/docs/sign",
+        "https://doc-sign-app.onrender.com/api/docs/sign",
         { filename, signatures },
         { headers: { Authorization: `Bearer ${token}` } }
       );
 
       const signedFile = res.data.file;
 
-      window.open(`http://localhost:5000/uploads/${signedFile}`, "_blank");
+      window.open(`https://doc-sign-app.onrender.com/uploads/${signedFile}`, "_blank");
 
     } catch (err) {
       console.error("SIGN ERROR:", err);
@@ -250,7 +250,7 @@ function PDFViewer() {
         className="pdf-canvas-container"
       >
         <iframe
-          src={`http://localhost:5000/uploads/${filename}#page=${selectedPage}&toolbar=0`}
+          src={`https://doc-sign-app.onrender.com/uploads/${filename}#page=${selectedPage}&toolbar=0`}
           title="PDF"
           className="pdf-iframe"
         />
