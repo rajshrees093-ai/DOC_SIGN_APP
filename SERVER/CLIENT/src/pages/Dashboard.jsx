@@ -1,5 +1,4 @@
 import { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
 import axios from "axios";
 
 function Dashboard() {
@@ -221,15 +220,9 @@ function Dashboard() {
         <div className="doc-list grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {filteredDocs.map((doc) => (
             <div key={doc.id} className="doc-card border rounded-xl p-4 shadow-sm bg-white">
-              {/* using react-router Link avoids full page reloads and we
-                  encode the storage path in case it ever contains characters
-                  (slashes, spaces) that would break the URL */}
-              <Link
-                to={`/preview/${encodeURIComponent(doc.path)}`}
-                className="doc-title font-semibold text-blue-600"
-              >
+              <a href={`/preview/${doc.path}`} className="doc-title font-semibold text-blue-600">
                 {doc.filename}
-              </Link>
+              </a>
 
               <p className={`doc-meta font-medium ${getStatusColor(doc.status)}`}>
                 Status: {doc.status}
