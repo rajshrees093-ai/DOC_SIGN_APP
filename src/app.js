@@ -1,6 +1,6 @@
 const express = require("express");
 const cors = require("cors");
-const path = require("path");   // ✅ IMPORTANT LINE
+const path = require("path");   // ✅ REQUIRED
 
 const authRoutes = require("./routes/authRoutes");
 const docsRoutes = require("./routes/docsRoutes");
@@ -11,10 +11,9 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-/* ✅ FIX FOR RENDER */
-app.use("/uploads", express.static(path.join(__dirname, "../uploads")));
+/* ✅ CRITICAL FIX */
+app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 
-/* ROUTES */
 app.use("/api/auth", authRoutes);
 app.use("/api/docs", docsRoutes);
 app.use("/api/signatures", signatureRoutes);
