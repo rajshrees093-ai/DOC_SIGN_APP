@@ -3,7 +3,6 @@ console.log("DOCS ROUTES FILE LOADED ✅");
 const express = require("express");
 const multer = require("multer");
 const path = require("path");
-const fs = require("fs");
 const { PDFDocument } = require("pdf-lib");
 const crypto = require("crypto");
 
@@ -67,63 +66,72 @@ router.get("/", authMiddleware, async (req, res) => {
 /* =========================
    ✅ UPLOAD PDF → SUPABASE
    ========================= */
-router.post("/upload", authMiddleware, upload.single("file"), async (req, res) => {
-  try {
-    if (!req.file) return res.status(400).json({ error: "No file received ❌" });
+router.post(
+  "/upload",
+  authMiddleware,
+  upload.single("file"),
+  async (req, res) => {
+    try {
+      if (!req.file)
+        return res.status(400).json({ error: "No file received ❌" });
 
-    const file = req.file;
-    const fileExt = path.extname(file.originalname);
+      const file = req.file;
+      const fileExt = path.extname(file.originalname);
 
-    if (fileExt.toLowerCase() !== ".pdf") {
-      return res.status(400).json({ error: "Only PDF allowed ❌" });
+      if (fileExt.toLowerCase() !== ".pdf") {
+        return res.status(400).json({ error: "Only PDF allowed ❌" });
+      }
+
+      const uniqueName = Date.now() + fileExt;
+
+      /* ✅ Upload ORIGINAL binary buffer */
+      const { error: uploadError } = await supabase.storage
+        .from("documents")
+        .upload(uniqueName, file.buffer, {
+          contentType: "application/pdf",
+          upsert: true,
+        });
+
+      if (uploadError) {
+        console.error(uploadError);
+        return res.status(400).json({ error: uploadError.message });
+      }
+
+      const { data: publicUrlData } = supabase.storage
+        .from("documents")
+        .getPublicUrl(uniqueName);
+
+      const publicUrl = publicUrlData.publicUrl;
+
+      const { data, error } = await supabase
+        .from("documents")
+        .insert([
+          {
+            filename: file.originalname,
+            path: uniqueName,
+            file_url: publicUrl,
+            owner: req.user.id,
+            status: "pending",
+            is_signed: false,
+          },
+        ])
+        .select()
+        .single();
+
+      if (error) return res.status(400).json({ error: error.message });
+
+      await insertAuditLog(req, data.id, "uploaded");
+
+      res.json({ message: "Upload successful ✅" });
+    } catch (err) {
+      console.error("UPLOAD ERROR:", err);
+      res.status(500).json({ error: err.message });
     }
-
-    const uniqueName = Date.now() + fileExt;
-
-    /* ✅ Upload to Supabase Storage */
-    const { error: uploadError } = await supabase.storage
-      .from("documents")
-      .upload(uniqueName, file.buffer, {
-        contentType: "application/pdf",
-      });
-
-    if (uploadError) {
-      return res.status(400).json({ error: uploadError.message });
-    }
-
-    /* ✅ Get Public URL */
-    const { data: publicUrlData } = supabase.storage
-      .from("documents")
-      .getPublicUrl(uniqueName);
-
-    const publicUrl = publicUrlData.publicUrl;
-
-    /* ✅ Insert DB record */
-    const { data, error } = await supabase.from("documents").insert([
-      {
-        filename: file.originalname,
-        path: uniqueName,
-        file_url: publicUrl,
-        owner: req.user.id,
-        status: "pending",
-        is_signed: false,
-      },
-    ]).select().single();
-
-    if (error) return res.status(400).json({ error: error.message });
-
-    await insertAuditLog(req, data.id, "uploaded");
-
-    res.json({ message: "Upload successful ✅" });
-
-  } catch (err) {
-    console.error("UPLOAD ERROR:", err);
-    res.status(500).json({ error: err.message });
   }
-});
+);
 
 /* =========================
-   ✅ PAGE COUNT (DOWNLOAD FROM SUPABASE)
+   ✅ PAGE COUNT
    ========================= */
 router.get("/pages/:filename", authMiddleware, async (req, res) => {
   try {
@@ -137,7 +145,6 @@ router.get("/pages/:filename", authMiddleware, async (req, res) => {
     const pdfDoc = await PDFDocument.load(pdfBytes);
 
     res.json({ pages: pdfDoc.getPages().length });
-
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -153,9 +160,8 @@ router.post("/sign", async (req, res) => {
     if (!filename || !signatures?.length)
       return res.status(400).json({ error: "Missing signature data ❌" });
 
-    const { data: fileData, error: downloadError } = await supabase.storage
-      .from("documents")
-      .download(filename);
+    const { data: fileData, error: downloadError } =
+      await supabase.storage.from("documents").download(filename);
 
     if (downloadError)
       return res.status(404).json({ error: "PDF not found ❌" });
@@ -183,13 +189,13 @@ router.post("/sign", async (req, res) => {
     const signedBytes = await pdfDoc.save();
     const signedFilename = `signed-${filename}`;
 
-    /* ✅ Upload signed PDF */
-    await supabase.storage
-      .from("documents")
-      .upload(signedFilename, signedBytes, {
-        contentType: "application/pdf",
-        upsert: true,
-      });
+    /* ✅ CRITICAL FIX → convert to Buffer */
+    const buffer = Buffer.from(signedBytes);
+
+    await supabase.storage.from("documents").upload(signedFilename, buffer, {
+      contentType: "application/pdf",
+      upsert: true,
+    });
 
     const { data: signedUrlData } = supabase.storage
       .from("documents")
@@ -204,7 +210,6 @@ router.post("/sign", async (req, res) => {
       .eq("path", filename);
 
     res.json({ file: signedFilename });
-
   } catch (err) {
     console.error("SIGN ERROR:", err);
     res.status(500).json({ error: err.message });
@@ -225,7 +230,6 @@ router.get("/audit/:documentId", authMiddleware, async (req, res) => {
     if (error) return res.status(400).json({ error: error.message });
 
     res.json(data);
-
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
