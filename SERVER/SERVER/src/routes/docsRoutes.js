@@ -5,8 +5,6 @@ const multer = require("multer");
 const path = require("path");
 const fs = require("fs");
 const { PDFDocument } = require("pdf-lib");
-
-const nodemailer = require("nodemailer");
 const crypto = require("crypto");
 
 const supabase = require("../config/supabase");
@@ -14,50 +12,33 @@ const authMiddleware = require("../middleware/authMiddleware");
 
 const router = express.Router();
 
-
-// =========================
-// ✅ Ensure Upload Folder Exists
-// =========================
-const uploadDir = path.join(__dirname, "../../uploads");
-
-if (!fs.existsSync(uploadDir)) {
-  fs.mkdirSync(uploadDir, { recursive: true });
-  console.log("Uploads folder created ✅");
+function getUploadsDir() {
+  const candidates = [
+    path.resolve("uploads"),
+    path.join(__dirname, "../../uploads"),
+    path.join(__dirname, "../../../uploads"),
+    path.join(__dirname, "../uploads"),
+    path.resolve("SERVER/uploads"),
+  ];
+  for (const c of candidates) {
+    if (fs.existsSync(c)) return c;
+  }
+  const fallback = path.resolve("uploads");
+  fs.mkdirSync(fallback, { recursive: true });
+  return fallback;
 }
 
-
-// =========================
-// ✅ Multer Config
-// =========================
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => cb(null, uploadDir),
-  filename: (req, file, cb) => {
-    const uniqueName = Date.now() + path.extname(file.originalname);
-    cb(null, uniqueName);
-  },
-});
-
-const fileFilter = (req, file, cb) => {
-  const isPdfMime = file.mimetype === "application/pdf";
-  const isPdfExt = path.extname(file.originalname).toLowerCase() === ".pdf";
-
-  if (!isPdfMime || !isPdfExt) {
-    return cb(new Error("Only PDF files allowed"), false);
-  }
-
-  cb(null, true);
-};
-
+/* =========================
+   ✅ Multer Memory Storage
+   ========================= */
 const upload = multer({
-  storage,
-  fileFilter,
+  storage: multer.memoryStorage(),
   limits: { fileSize: 10 * 1024 * 1024 },
 });
 
-
-// =========================
-// ✅ Helper → Audit Logger (DAY 10 CORE)
-// =========================
+/* =========================
+   ✅ Audit Logger
+   ========================= */
 async function insertAuditLog(req, documentId, action) {
   try {
     const clientIp =
@@ -75,16 +56,14 @@ async function insertAuditLog(req, documentId, action) {
     ]);
 
     console.log(`AUDIT LOG → ${action} ✅`);
-
   } catch (err) {
     console.error("AUDIT LOG ERROR:", err.message);
   }
 }
 
-
-// =========================
-// ✅ GET USER DOCUMENTS
-// =========================
+/* =========================
+   ✅ GET USER DOCUMENTS
+   ========================= */
 router.get("/", authMiddleware, async (req, res) => {
   try {
     const { data, error } = await supabase
@@ -93,104 +72,199 @@ router.get("/", authMiddleware, async (req, res) => {
       .eq("owner", req.user.id)
       .order("created_at", { ascending: false });
 
-    if (error) return res.status(400).json({ error: error.message });
+    if (!error && data && data.length > 0) return res.json(data);
+  } catch (err) {
+    console.warn("Supabase documents unavailable, using local uploads fallback");
+  }
 
-    res.json(data);
-
+  // Local fallback: list files from uploads directory
+  try {
+    const uploadsDir = getUploadsDir();
+    const files = fs.readdirSync(uploadsDir).filter(f => f.endsWith(".pdf") && !f.startsWith("signed-"));
+    const localDocs = files.map((file, idx) => ({
+      id: `local-${idx + 1}`,
+      filename: `Document-${file}`,
+      path: file,
+      file_url: `http://localhost:5000/uploads/${file}`,
+      status: "pending",
+      is_signed: false,
+      created_at: new Date().toISOString(),
+    }));
+    return res.json(localDocs);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
-
-// =========================
-// ✅ UPLOAD PDF
-// =========================
-router.post("/upload", authMiddleware, (req, res) => {
-  upload.single("file")(req, res, async (err) => {
+/* =========================
+   ✅ UPLOAD PDF → SUPABASE / LOCAL
+   ========================= */
+router.post(
+  "/upload",
+  authMiddleware,
+  upload.single("file"),
+  async (req, res) => {
     try {
-      if (err) return res.status(400).json({ error: err.message });
-      if (!req.file) return res.status(400).json({ error: "No file received" });
+      if (!req.file)
+        return res.status(400).json({ error: "No file received ❌" });
 
       const file = req.file;
+      const fileExt = path.extname(file.originalname);
 
-      const { data, error } = await supabase.from("documents").insert([
-        {
-          filename: file.originalname,
-          path: file.filename,
-          owner: req.user.id,
-          status: "pending",
-          is_signed: false,
-        },
-      ]).select().single();
-
-      if (error) {
-        fs.unlinkSync(file.path);
-        return res.status(400).json({ error: error.message });
+      if (fileExt.toLowerCase() !== ".pdf") {
+        return res.status(400).json({ error: "Only PDF allowed ❌" });
       }
 
-      await insertAuditLog(req, data.id, "uploaded");
+      const uniqueName = Date.now() + fileExt;
+      const uploadsDir = getUploadsDir();
+      fs.writeFileSync(path.join(uploadsDir, uniqueName), file.buffer);
 
-      res.json({ message: "Upload successful ✅" });
+      let publicUrl = `http://localhost:5000/uploads/${uniqueName}`;
 
+      /* Try Supabase Storage */
+      try {
+        const { error: uploadError } = await supabase.storage
+          .from("documents")
+          .upload(uniqueName, file.buffer, {
+            contentType: "application/pdf",
+            upsert: true,
+          });
+
+        if (!uploadError) {
+          const { data: publicUrlData } = supabase.storage
+            .from("documents")
+            .getPublicUrl(uniqueName);
+
+          publicUrl = publicUrlData.publicUrl;
+
+          const { data, error } = await supabase
+            .from("documents")
+            .insert([
+              {
+                filename: file.originalname,
+                path: uniqueName,
+                file_url: publicUrl,
+                owner: req.user.id,
+                status: "pending",
+                is_signed: false,
+              },
+            ])
+            .select()
+            .single();
+
+          if (!error && data) {
+            await insertAuditLog(req, data.id, "uploaded");
+          }
+        }
+      } catch (sbErr) {
+        console.warn("Supabase storage upload skipped (local fallback used):", sbErr.message);
+      }
+
+      res.json({ message: "Upload successful ✅", filename: uniqueName });
     } catch (err) {
+      console.error("UPLOAD ERROR:", err);
       res.status(500).json({ error: err.message });
     }
-  });
-});
+  }
+);
 
-
-// =========================
-// ✅ PAGE COUNT
-// =========================
+/* =========================
+   ✅ PAGE COUNT
+   ========================= */
 router.get("/pages/:filename", authMiddleware, async (req, res) => {
   try {
-    const filePath = path.join(uploadDir, req.params.filename);
+    const uploadsDir = getUploadsDir();
+    const localPath = path.join(uploadsDir, req.params.filename);
 
-    if (!fs.existsSync(filePath))
-      return res.status(404).json({ error: "File not found" });
+    if (fs.existsSync(localPath)) {
+      const pdfBytes = fs.readFileSync(localPath);
+      const pdfDoc = await PDFDocument.load(pdfBytes);
+      return res.json({ pages: pdfDoc.getPages().length });
+    }
 
-    const pdfBytes = fs.readFileSync(filePath);
+    const { data, error } = await supabase.storage
+      .from("documents")
+      .download(req.params.filename);
+
+    if (error) return res.status(404).json({ error: "File not found ❌" });
+
+    const pdfBytes = await data.arrayBuffer();
     const pdfDoc = await PDFDocument.load(pdfBytes);
 
     res.json({ pages: pdfDoc.getPages().length });
-
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
+/* =========================
+   ✅ STREAM PDF FILE
+   ========================= */
+router.get("/file/:filename", async (req, res) => {
+  try {
+    const uploadsDir = getUploadsDir();
+    const localPath = path.join(uploadsDir, req.params.filename);
 
-// =========================
-// ✅ SIGN PDF + AUDIT LOG
-// =========================
+    if (fs.existsSync(localPath)) {
+      res.setHeader("Content-Type", "application/pdf");
+      res.setHeader("Content-Disposition", `inline; filename="${req.params.filename}"`);
+      return fs.createReadStream(localPath).pipe(res);
+    }
+
+    const { data, error } = await supabase.storage
+      .from("documents")
+      .download(req.params.filename);
+
+    if (error) return res.status(404).json({ error: "File not found ❌" });
+
+    const arrayBuffer = await data.arrayBuffer();
+    const buffer = Buffer.from(arrayBuffer);
+
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader("Content-Disposition", `inline; filename="${req.params.filename}"`);
+    res.send(buffer);
+  } catch (err) {
+    console.error("STREAM ERROR:", err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/* =========================
+   ✅ SIGN PDF → SUPABASE / LOCAL
+   ========================= */
 router.post("/sign", async (req, res) => {
   try {
-    const { filename, signatures, token } = req.body;
+    const { filename, signatures } = req.body;
 
     if (!filename || !signatures?.length)
-      return res.status(400).json({ error: "Missing signature data" });
+      return res.status(400).json({ error: "Missing signature data ❌" });
 
-    const { data: documentRecord } = await supabase
-      .from("documents")
-      .select("*")
-      .eq("path", filename)
-      .single();
+    let pdfBytes;
+    const uploadsDir = getUploadsDir();
+    const localPath = path.join(uploadsDir, filename);
 
-    const filePath = path.join(uploadDir, filename);
+    if (fs.existsSync(localPath)) {
+      pdfBytes = fs.readFileSync(localPath);
+    } else {
+      const { data: fileData, error: downloadError } =
+        await supabase.storage.from("documents").download(filename);
 
-    if (!fs.existsSync(filePath))
-      return res.status(404).json({ error: "PDF not found" });
+      if (downloadError)
+        return res.status(404).json({ error: "PDF not found ❌" });
 
-    const pdfBytes = fs.readFileSync(filePath);
+      const arrayBuffer = await fileData.arrayBuffer();
+      pdfBytes = Buffer.from(arrayBuffer);
+    }
+
     const pdfDoc = await PDFDocument.load(pdfBytes);
     const pages = pdfDoc.getPages();
 
     for (const sig of signatures) {
       const pageIndex = Number(sig.page) - 1;
+      if (pageIndex < 0 || pageIndex >= pages.length) continue;
 
-      if (!pages[pageIndex])
-        return res.status(400).json({ error: "Invalid page number" });
+      const page = pages[pageIndex];
+      const { width: pdfWidth, height: pdfHeight } = page.getSize();
 
       const pngBytes = Buffer.from(
         sig.image.replace(/^data:image\/png;base64,/, ""),
@@ -199,112 +273,76 @@ router.post("/sign", async (req, res) => {
 
       const pngImage = await pdfDoc.embedPng(pngBytes);
 
-      pages[pageIndex].drawImage(pngImage, {
-        x: Number(sig.x),
-        y: Number(sig.y),
-        width: Number(sig.size),
-        height: Number(sig.size) / 2,
+      let sigX, sigY, sigWidth, sigHeight;
+
+      // Handle Step 9: Normalized relative percentage coordinates (x%, y%)
+      if (sig.xPercent !== undefined && sig.yPercent !== undefined) {
+        sigWidth = sig.widthPercent !== undefined
+          ? (Number(sig.widthPercent) / 100) * pdfWidth
+          : (Number(sig.size || 150) / 600) * pdfWidth;
+
+        sigHeight = sig.heightPercent !== undefined
+          ? (Number(sig.heightPercent) / 100) * pdfHeight
+          : sigWidth / 2;
+
+        sigX = (Number(sig.xPercent) / 100) * pdfWidth;
+        // Invert Y coordinate because PDF coordinate origin (0, 0) is at bottom-left!
+        sigY = pdfHeight - ((Number(sig.yPercent) / 100) * pdfHeight) - sigHeight;
+      } else {
+        // Fallback for legacy pixel coordinates
+        sigWidth = Number(sig.size || 150);
+        sigHeight = Number(sig.size || 150) / 2;
+        sigX = Number(sig.x);
+        sigY = pdfHeight - Number(sig.y) - sigHeight;
+      }
+
+      page.drawImage(pngImage, {
+        x: Math.max(0, sigX),
+        y: Math.max(0, sigY),
+        width: sigWidth,
+        height: sigHeight,
       });
     }
 
     const signedBytes = await pdfDoc.save();
     const signedFilename = `signed-${filename}`;
+    const buffer = Buffer.from(signedBytes);
 
-    fs.writeFileSync(path.join(uploadDir, signedFilename), signedBytes);
+    // Save locally
+    fs.writeFileSync(path.join(uploadsDir, signedFilename), buffer);
 
-    await supabase
-      .from("documents")
-      .update({ is_signed: true })
-      .eq("path", filename);
+    // Try Supabase save
+    try {
+      await supabase.storage.from("documents").upload(signedFilename, buffer, {
+        contentType: "application/pdf",
+        upsert: true,
+      });
 
-    await insertAuditLog(req, documentRecord?.id, "signed");
+      const { data: signedUrlData } = supabase.storage
+        .from("documents")
+        .getPublicUrl(signedFilename);
+
+      await supabase
+        .from("documents")
+        .update({
+          is_signed: true,
+          signed_url: signedUrlData.publicUrl,
+        })
+        .eq("path", filename);
+    } catch (sbErr) {
+      console.warn("Supabase signed upload skipped (saved locally):", sbErr.message);
+    }
 
     res.json({ file: signedFilename });
-
   } catch (err) {
     console.error("SIGN ERROR:", err);
     res.status(500).json({ error: err.message });
   }
 });
 
-
-// =========================
-// ✅ DOCUMENT DECISION (FIXED + DAY 10 AUDIT)
-// =========================
-router.post("/decision", authMiddleware, async (req, res) => {
-  try {
-    const { id, decision, reason } = req.body;
-
-    if (!id || !decision)
-      return res.status(400).json({ error: "Missing decision data ❌" });
-
-    const { data, error } = await supabase
-      .from("documents")
-      .select("*")
-      .eq("id", id)
-      .single();
-
-    if (error || !data)
-      return res.status(404).json({ error: "Document not found ❌" });
-
-    if (!data.is_signed)
-      return res.status(400).json({ error: "Document not signed ❌" });
-
-    if (data.status !== "pending")
-      return res.status(400).json({ error: "Decision already made ❌" });
-
-    await supabase
-      .from("documents")
-      .update({
-        status: decision,
-        decision_reason: reason || null,
-        decided_at: new Date(),
-        decided_by: req.user.id,
-      })
-      .eq("id", id);
-
-    await insertAuditLog(req, id, decision);
-
-    res.json({ message: `Document ${decision} ✅` });
-
-  } catch (err) {
-    console.error("DECISION ERROR:", err);
-    res.status(500).json({ error: err.message });
-  }
-});
-
-
-// =========================
-// ✅ REQUEST SIGNATURE
-// =========================
-router.post("/request-signature", authMiddleware, async (req, res) => {
-  try {
-    const { documentId, email } = req.body;
-
-    if (!documentId || !email)
-      return res.status(400).json({ error: "Missing data ❌" });
-
-    const token = crypto.randomBytes(32).toString("hex");
-    const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
-
-    await supabase
-      .from("documents")
-      .update({ signing_token: token, token_expires_at: expiresAt })
-      .eq("id", documentId);
-
-    await insertAuditLog(req, documentId, "signature_requested");
-
-    res.json({ message: "Signature request created ✅" });
-
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-
-// =========================
-// ✅ FETCH AUDIT LOGS
-// =========================
+/* =========================
+   ✅ AUDIT LOGS
+   ========================= */
 router.get("/audit/:documentId", authMiddleware, async (req, res) => {
   try {
     const { data, error } = await supabase
@@ -316,7 +354,6 @@ router.get("/audit/:documentId", authMiddleware, async (req, res) => {
     if (error) return res.status(400).json({ error: error.message });
 
     res.json(data);
-
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
