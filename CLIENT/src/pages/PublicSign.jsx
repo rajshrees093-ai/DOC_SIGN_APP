@@ -6,11 +6,8 @@ import { CSS } from "@dnd-kit/utilities";
 import SignatureCanvas from "react-signature-canvas";
 import axios from "axios";
 
-// Configure PDF.js worker
-pdfjs.GlobalWorkerOptions.workerSrc = new URL(
-  "pdfjs-dist/build/pdf.worker.min.mjs",
-  import.meta.url
-).toString();
+// Configure PDF.js worker to use exact local version from public/
+pdfjs.GlobalWorkerOptions.workerSrc = "/pdf.worker.min.mjs";
 
 function DraggableSignatureStamp({ x, y, width, height, image, onResize }) {
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
