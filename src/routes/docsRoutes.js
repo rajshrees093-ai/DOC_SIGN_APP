@@ -13,19 +13,11 @@ const authMiddleware = require("../middleware/authMiddleware");
 const router = express.Router();
 
 function getUploadsDir() {
-  const candidates = [
-    path.resolve("uploads"),
-    path.join(__dirname, "../../uploads"),
-    path.join(__dirname, "../../../uploads"),
-    path.join(__dirname, "../uploads"),
-    path.resolve("SERVER/uploads"),
-  ];
-  for (const c of candidates) {
-    if (fs.existsSync(c)) return c;
+  const uploadsDir = path.resolve("uploads");
+  if (!fs.existsSync(uploadsDir)) {
+    fs.mkdirSync(uploadsDir, { recursive: true });
   }
-  const fallback = path.resolve("uploads");
-  fs.mkdirSync(fallback, { recursive: true });
-  return fallback;
+  return uploadsDir;
 }
 
 /* =========================
