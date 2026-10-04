@@ -644,6 +644,7 @@ function PDFViewer() {
               ))}
           </PageDroppableArea>
         </DndContext>
+        )}
       </main>
 
       {/* Signature Pad Modal Dialog */}
