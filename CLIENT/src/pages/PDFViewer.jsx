@@ -182,6 +182,9 @@ function PDFViewer() {
   // Resize state
   const [resizingItem, setResizingItem] = useState(null);
 
+  // View engine: "canvas" (react-pdf with drag-drop) or "native" (iframe direct)
+  const [viewEngine, setViewEngine] = useState("canvas");
+
   // PDF URL streamed from backend
   const pdfUrl = `http://localhost:5000/api/docs/file/${filename}`;
 
@@ -481,18 +484,44 @@ function PDFViewer() {
             </button>
           </div>
 
+          {/* View Engine Toggle */}
+          <div className="flex items-center bg-slate-100 p-1 rounded-lg border border-slate-200 text-xs">
+            <button
+              type="button"
+              onClick={() => setViewEngine("canvas")}
+              className={`px-2.5 py-1 rounded font-semibold transition cursor-pointer ${
+                viewEngine === "canvas"
+                  ? "bg-white text-indigo-700 shadow-xs"
+                  : "text-slate-600 hover:text-slate-900"
+              }`}
+            >
+              ✍ Canvas Sign Mode
+            </button>
+            <button
+              type="button"
+              onClick={() => setViewEngine("native")}
+              className={`px-2.5 py-1 rounded font-semibold transition cursor-pointer ${
+                viewEngine === "native"
+                  ? "bg-white text-indigo-700 shadow-xs"
+                  : "text-slate-600 hover:text-slate-900"
+              }`}
+            >
+              👁️ Direct PDF View
+            </button>
+          </div>
+
           {/* Action Buttons */}
           <div className="flex items-center gap-2">
             <button
               onClick={addBlock}
-              className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-lg border border-slate-300 transition flex items-center gap-1"
+              className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-lg border border-slate-300 transition flex items-center gap-1 cursor-pointer"
             >
               ➕ Add Sign Box
             </button>
 
             <button
               onClick={() => setIsModalOpen(true)}
-              className="px-3.5 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold rounded-lg shadow-xs transition flex items-center gap-1.5"
+              className="px-3.5 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold rounded-lg shadow-xs transition flex items-center gap-1.5 cursor-pointer"
             >
               ✍ Draw Signature
             </button>
@@ -500,7 +529,7 @@ function PDFViewer() {
             <button
               onClick={finalizePDF}
               disabled={isFinalizing || signatures.length === 0}
-              className="px-4 py-1.5 bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-300 text-white text-xs font-semibold rounded-lg shadow-xs transition flex items-center gap-1.5"
+              className="px-4 py-1.5 bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-300 text-white text-xs font-semibold rounded-lg shadow-xs transition flex items-center gap-1.5 cursor-pointer"
             >
               {isFinalizing ? "Finalizing..." : "🚀 Finalize PDF"}
             </button>
@@ -525,41 +554,60 @@ function PDFViewer() {
 
       {/* Main PDF Canvas Area */}
       <main className="flex-1 overflow-auto p-6 flex justify-center items-start">
-        <DndContext onDragEnd={handleDragEnd}>
-          <PageDroppableArea
-            pageContainerRef={pageContainerRef}
-            onPageClick={() => {
-              setSelectedBlockId(null);
-              setSelectedSigId(null);
-            }}
-          >
-            <Document
-              file={pdfUrl}
-              onLoadSuccess={handleDocumentLoadSuccess}
-              loading={
-                <div className="w-[600px] h-[800px] flex flex-col items-center justify-center bg-white text-slate-400 gap-3">
-                  <div className="w-8 h-8 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin" />
-                  <p className="text-sm font-medium">Loading document via react-pdf...</p>
-                </div>
-              }
-              error={
-                <div className="w-[600px] h-[400px] flex flex-col items-center justify-center bg-white text-rose-500 p-6 text-center gap-2">
-                  <span className="text-3xl">⚠️</span>
-                  <p className="font-semibold">Failed to render PDF</p>
-                  <p className="text-xs text-slate-500">
-                    Ensure server is running and file exists in storage.
-                  </p>
-                </div>
-              }
+        {viewEngine === "native" ? (
+          <div className="w-full max-w-4xl flex flex-col items-center">
+            <iframe
+              src={`http://localhost:5000/uploads/${filename}#page=${currentPage}&toolbar=1`}
+              title="Native PDF Viewer"
+              className="w-full h-[750px] rounded-2xl border border-slate-200 shadow-xl bg-white"
+            />
+            <p className="text-xs text-slate-500 mt-2">
+              Viewing in Direct PDF mode. Switch to &quot;Canvas Sign Mode&quot; above to drag and place signatures.
+            </p>
+          </div>
+        ) : (
+          <DndContext onDragEnd={handleDragEnd}>
+            <PageDroppableArea
+              pageContainerRef={pageContainerRef}
+              onPageClick={() => {
+                setSelectedBlockId(null);
+                setSelectedSigId(null);
+              }}
             >
-              <Page
-                pageNumber={currentPage}
-                scale={scale}
-                renderTextLayer={false}
-                renderAnnotationLayer={false}
-                onRenderSuccess={handlePageRenderSuccess}
-              />
-            </Document>
+              <Document
+                file={pdfUrl}
+                onLoadSuccess={handleDocumentLoadSuccess}
+                loading={
+                  <div className="w-[600px] h-[800px] flex flex-col items-center justify-center bg-white text-slate-400 gap-3">
+                    <div className="w-8 h-8 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin" />
+                    <p className="text-sm font-medium">Loading document via react-pdf...</p>
+                  </div>
+                }
+                error={
+                  <div className="w-[600px] h-[400px] flex flex-col items-center justify-center bg-white text-rose-500 p-6 text-center gap-3">
+                    <span className="text-3xl">⚠️</span>
+                    <p className="font-semibold text-slate-800">Trouble loading canvas in this browser</p>
+                    <p className="text-xs text-slate-500 max-w-sm">
+                      Switch to Direct PDF View for native browser rendering.
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => setViewEngine("native")}
+                      className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold transition shadow-sm cursor-pointer"
+                    >
+                      Switch to Direct PDF View ➔
+                    </button>
+                  </div>
+                }
+              >
+                <Page
+                  pageNumber={currentPage}
+                  scale={scale}
+                  renderTextLayer={false}
+                  renderAnnotationLayer={false}
+                  onRenderSuccess={handlePageRenderSuccess}
+                />
+              </Document>
 
             {/* Render Draggable Placeholder Blocks for this page */}
             {blocks
